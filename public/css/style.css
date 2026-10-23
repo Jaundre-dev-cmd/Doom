@@ -26,19 +26,33 @@ html, body {
   justify-content: center;
   overflow-y: auto;
   background:
-    linear-gradient(rgba(10, 12, 14, 0.85), rgba(10, 12, 14, 0.92)),
+    linear-gradient(rgba(10, 12, 14, 0.82), rgba(10, 12, 14, 0.94)),
     repeating-linear-gradient(135deg, #15171a 0px, #15171a 2px, #0b0c0e 2px, #0b0c0e 40px);
   padding: 30px 16px;
 }
 
 .lobby-card {
-  width: 640px;
-  max-width: 94vw;
+  width: min(860px, 94vw);
   background: #121316;
   border: 1px solid #2a2d32;
   border-radius: 10px;
-  padding: 28px 32px 30px;
+  padding: 24px 28px 22px;
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+}
+
+.server-info {
+  font-size: 12px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  color: #9ca3af;
+  line-height: 1.7;
+  margin: 0 0 24px;
+}
+
+.ip-highlight {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 .lobby-card h1 {
@@ -64,6 +78,7 @@ html, body {
 .lobby-row {
   display: flex;
   gap: 14px;
+  margin-bottom: 10px;
 }
 
 .lobby-field {
@@ -76,7 +91,7 @@ html, body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: #9a9aa2;
-  margin: 0 0 4px;
+  margin: 0 0 6px;
 }
 
 .lobby-field input {
@@ -107,13 +122,17 @@ html, body {
 }
 
 .card-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
 .card {
-  flex: 1 1 130px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 52px;
   padding: 10px 12px;
   background: #1a1c20;
   border: 1px solid #2e3136;
@@ -122,8 +141,8 @@ html, body {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  text-align: left;
-  transition: border-color 0.15s, background 0.15s;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 
 .card:hover {
@@ -136,9 +155,14 @@ html, body {
   box-shadow: inset 0 0 0 1px #e67e22;
 }
 
+.map-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .map-row .card {
-  flex: 1 1 260px;
-  min-height: 70px;
+  min-height: 82px;
+  display: block;
+  text-align: left;
   color: #ffffff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
@@ -149,6 +173,14 @@ html, body {
   font-weight: 400;
   margin-top: 4px;
   opacity: 0.9;
+}
+
+#connection-info {
+  font-size: 12px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  color: #9ca3af;
+  margin-top: 12px;
+  min-height: 22px;
 }
 
 .swatch-row {
@@ -170,30 +202,83 @@ html, body {
   box-shadow: 0 0 0 2px #121316, 0 0 0 4px #e67e22;
 }
 
-#deploy-button {
-  width: 100%;
-  margin-top: 24px;
-  padding: 13px;
-  background: #e67e22;
-  border: none;
-  border-radius: 6px;
-  color: #141414;
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: 1.5px;
-  cursor: pointer;
-  transition: background 0.15s;
+.deploy-section {
+  margin-top: 28px;
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr) 58px;
+  gap: 12px;
+  align-items: center;
 }
 
-#deploy-button:hover {
-  background: #cf6c13;
+.signal-bar-box {
+  background: #1e2328;
+  border: 1px solid #2d343c;
+  height: 48px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
+}
+
+.signal-bar {
+  width: 4px;
+  background-color: #374151;
+  border-radius: 2px;
+  display: block;
+}
+
+.signal-bar.active {
+  background-color: #10b981;
+}
+
+#deploy-button,
+.deploy-btn {
+  width: 100%;
+  height: 48px;
+  background: #d97706;
+  border: none;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3);
+}
+
+#deploy-button:hover,
+.deploy-btn:hover {
+  background: #f59e0b;
+}
+
+#deploy-button:active,
+.deploy-btn:active {
+  transform: scale(0.99);
+}
+
+.settings-btn {
+  background: #1e2328;
+  border: 1px solid #2d343c;
+  height: 48px;
+  border-radius: 6px;
+  color: #9ca3af;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .status {
   min-height: 18px;
-  margin: 10px 0 0;
+  margin: 12px 0 0;
   font-size: 12px;
-  color: #e67e22;
+  color: #ef4444;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
 .help, .controls {
