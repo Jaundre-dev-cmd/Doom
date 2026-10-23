@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DOOM Clone — 3D</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <!-- Three.js loaded from a CDN as an ES module — no build step, no
+       bundler, no assets to download/license. Pinned version for
+       reproducibility. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <!-- Lobby: connect, loadout (weapon + skin), map select, deploy -->
+  <div id="lobby">
+    <div class="lobby-card">
+      <h1>DOOM<span>CLONE</span></h1>
+      <p class="subtitle">3D multiplayer shooter — set your loadout, pick a map, deploy.</p>
+
+      <form id="lobby-form">
+        <div class="lobby-row">
+          <div class="lobby-field">
+            <label for="player-name">Callsign</label>
+            <input id="player-name" type="text" maxlength="16" placeholder="Player" autocomplete="off" />
+          </div>
+          <div class="lobby-field">
+            <label for="server-address">Server address</label>
+            <input id="server-address" type="text" placeholder="ws://192.168.1.10:3000" autocomplete="off" />
+          </div>
+        </div>
+
+        <div id="connection-info" class="help">Detecting this machine's address...</div>
+
+        <section class="lobby-section">
+          <h2>Weapon</h2>
+          <div id="weapon-cards" class="card-row"></div>
+        </section>
+
+        <section class="lobby-section">
+          <h2>Skin</h2>
+          <div id="skin-swatches" class="swatch-row"></div>
+        </section>
+
+        <section class="lobby-section">
+          <h2>Accent</h2>
+          <div id="accent-swatches" class="swatch-row"></div>
+        </section>
+
+        <section class="lobby-section">
+          <h2>Headgear</h2>
+          <div id="headgear-cards" class="card-row"></div>
+        </section>
+
+        <section class="lobby-section">
+          <h2>Map</h2>
+          <div id="map-cards" class="card-row map-row"></div>
+          <p class="help small">The match's map is set by whichever player deploys first; joining later follows whatever is already locked in.</p>
+        </section>
+
+        <button id="deploy-button" type="submit">DEPLOY</button>
+        <p id="lobby-status" class="status"></p>
+      </form>
+
+      <div class="help">
+        <strong>Hosting?</strong> Run <code>npm start</code>, then share one of the
+        addresses above with your friend.<br />
+        <strong>Joining?</strong> Ask your host for <em>their</em> real address.<br />
+        See <code>README.md</code> for full setup and port-forwarding steps.
+      </div>
+
+      <div class="controls">
+        <strong>Controls:</strong> WASD move · Space jump · Shift sprint ·
+        F jetpack · E use buy station/upgrade bench · Tab inventory ·
+        Mouse look (click game to lock pointer) · Left click to shoot
+        (hold for the Chaingun) · 1-4 or scroll to switch weapons
+      </div>
+    </div>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div id="health-box">❤ <span id="health-value">100</span></div>
+    <div id="money-box">💰 $<span id="money-value">500</span></div>
+    <div id="weapon-box">🔫 <span id="weapon-name">Pistol</span></div>
+    <div id="secrets-box">🔎 Secrets: <span id="secrets-value">0</span></div>
+    <ol id="players-list"></ol>
+    <div id="fuel-bar-container">
+      <div id="fuel-bar-label">JETPACK</div>
+      <div id="fuel-bar-track"><div id="fuel-bar-fill"></div></div>
+    </div>
+    <div id="zombie-hud" class="hidden">
+      <div id="round-value">ROUND 1</div>
+      <div id="zombies-remaining-value">Zombies: 0</div>
+      <div id="zombie-kills-value">Your kills: 0</div>
+    </div>
+  </div>
+
+  <div id="interact-prompt" class="hidden"></div>
+
+  <!-- Inventory overlay (Tab) — buy-station/bench purchases apply here too -->
+  <div id="inventory-overlay" class="hidden">
+    <div class="inventory-card">
+      <h2>LOADOUT</h2>
+      <p class="inventory-money">💰 $<span id="inventory-money">500</span></p>
+      <ul id="inventory-list"></ul>
+      <p class="help small">Click an owned weapon to equip it. Buy locked weapons at their station, or press Tab to close.</p>
+    </div>
+  </div>
+
+  <div id="banner"></div>
+
+  <canvas id="minimap" class="hidden" width="150" height="150"></canvas>
+
+  <!-- Three.js renders its canvas into this container -->
+  <div id="game-container" class="hidden"></div>
+
+  <div id="crosshair" class="hidden"></div>
+  <div id="damage-flash"></div>
+
+  <div id="click-overlay" class="hidden">
+    <span>Click to aim</span>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

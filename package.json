@@ -1,0 +1,13 @@
+{
+  "name": "doom-clone",
+  "version": "1.0.0",
+  "description": "A browser-based 3D multiplayer shooter (Three.js) with a loadout/map-select lobby, played directly between two machines on a LAN or port-forwarded connection.",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
