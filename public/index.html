@@ -25,6 +25,13 @@
       <h1>DOOM<span>CLONE</span></h1>
       <p class="subtitle">3D multiplayer shooter — set your loadout, pick a map, deploy.</p>
 
+      <div class="server-info">
+        <div>This server's address(es):</div>
+        <div><span class="ip-highlight">ws://localhost:3000</span> (same machine only)</div>
+        <div><span class="ip-highlight">ws://192.168.1.10:3000</span> — Wi‑Fi, use this for a friend on the same network</div>
+        <div><span class="ip-highlight">ws://172.18.64.1:3000</span> — vEthernet (WSL), likely not reachable by a friend</div>
+      </div>
+
       <form id="lobby-form">
         <div class="lobby-row">
           <div class="lobby-field">
@@ -65,7 +72,18 @@
           <p class="help small">The match's map is set by whichever player deploys first; joining later follows whatever is already locked in.</p>
         </section>
 
-        <button id="deploy-button" type="submit">DEPLOY</button>
+        <div class="deploy-section">
+          <div class="signal-bar-box" aria-label="Connection signal">
+            <div class="signal-bar active" style="height: 10px;"></div>
+            <div class="signal-bar active" style="height: 16px;"></div>
+            <div class="signal-bar active" style="height: 22px;"></div>
+            <div class="signal-bar active" style="height: 28px;"></div>
+            <div class="signal-bar" style="height: 34px;"></div>
+          </div>
+          <button id="deploy-button" class="deploy-btn" type="submit">Deploy</button>
+          <button class="settings-btn" type="button" aria-label="Settings">⚙</button>
+        </div>
+
         <p id="lobby-status" class="status"></p>
       </form>
 
