@@ -1,0 +1,28 @@
+The .glb files in this directory (ak47.glb, m4a1.glb, mp5.glb, awp.glb,
+glock.glb) are from Tiny Strike (https://github.com/guyz/tinystrike), per that
+project's own ASSETS.md: "The weapon and equipment GLBs in
+assets/models/viewmodels/ ... were authored for Tiny Strike from the game's
+original procedural weapon designs. They are released under the project's
+ISC License."
+
+npc-arms-ct.glb is also from Tiny Strike's assets/models/viewmodels/, but per
+the same ASSETS.md it is itself a body-stripped derivative of
+assets/models/soldier_ct.glb, which is derived from the Quaternius Toon
+Shooter Game Kit (https://quaternius.com/packs/toonshootergamekit.html),
+released by Quaternius under CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/).
+Attribution is not required by CC0, but is included here with thanks to
+Quaternius, consistent with Tiny Strike's own ASSETS.md.
+
+ISC License — Copyright (c) 2026 Guy Zyskind
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.

@@ -36,15 +36,16 @@ const MIME_TYPES = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.glb': 'model/gltf-binary',
 };
 
 // Keep these in sync with public/js/constants.js.
-const WEAPON_IDS = ['pistol', 'shotgun', 'chaingun', 'rocket', 'ak47'];
+const WEAPON_IDS = ['pistol', 'shotgun', 'chaingun', 'rocket', 'ak47', 'm4a1', 'mp5', 'awp'];
 const SKIN_IDS = ['red', 'blue', 'olive', 'desert', 'black', 'gold'];
 const ACCENT_IDS = ['black', 'white', 'crimson', 'tan'];
 const HEADGEAR_IDS = ['none', 'helmet', 'cap'];
 const MAP_IDS = ['forest', 'techbase', 'zombies'];
-const MAP_MODES = { forest: 'pvp', techbase: 'pvp', zombies: 'zombies' };
+const MAP_MODES = { forest: 'pvp', techbase: 'pvp', zombies: 'pvp' };
 const DEFAULT_MAP = 'forest';
 
 // Zombies mode tuning — keep in sync with public/js/constants.js.
@@ -64,7 +65,7 @@ const ZOMBIE_SPEED = 2.4;
 const ZOMBIE_DAMAGE = 10;
 const ZOMBIE_ATTACK_RANGE = 1.5;
 const ZOMBIE_ATTACK_COOLDOWN_MS = 1000;
-const ZOMBIES_PER_ROUND_BASE = 4;
+const ZOMBIES_PER_ROUND_BASE = 20;
 const ZOMBIES_PER_ROUND_INCREMENT = 2;
 const ROUND_INTERMISSION_MS = 8000;
 const FIRST_ROUND_DELAY_MS = 5000;
@@ -99,7 +100,10 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  const urlPath = req.url === '/' ? '/index.html' : req.url.split('?')[0];
+  let urlPath = req.url.split('?')[0];
+  if (urlPath === '/') {
+    urlPath = '/index.html';
+  }
   const filePath = path.normalize(path.join(PUBLIC_DIR, urlPath));
 
   if (!filePath.startsWith(PUBLIC_DIR)) {
@@ -137,6 +141,7 @@ const players = new Map(); // id -> player state
 let nextId = 1;
 let spawnIndex = 0;
 let activeMap = null; // locked in by the first player to join
+let friendlyFire = true; // locked in by the first player to join, defaults to true (FFA)
 
 // Zombies mode state — only used when MAP_MODES[activeMap] === 'zombies'.
 const zombies = new Map(); // id -> zombie state
@@ -144,6 +149,10 @@ let nextZombieId = 1;
 let zombieRound = 0;
 let zombieTickInterval = null;
 let roundTimer = null;
+
+// AI Bots State
+let botTickInterval = null;
+const BOT_TICK_MS = 60; // Silky smooth 16 ticks/sec AI update rate
 
 function nextSpawn() {
   const spawn = SPAWN_POINTS[spawnIndex % SPAWN_POINTS.length];
@@ -166,11 +175,19 @@ function damagePlayer(target, damage, killerId) {
 
   if (target.health === 0) {
     if (killerId !== null) {
-      const killer = players.get(killerId);
-      if (killer) {
-        killer.score += 1;
-        broadcast({ type: 'kill', killerId: killer.id, killerScore: killer.score, victimId: target.id });
+      if (typeof killerId === 'number') {
+        const killer = players.get(killerId);
+        if (killer) {
+          killer.score += 1;
+          broadcast({ type: 'kill', killerId: killer.id, killerScore: killer.score, victimId: target.id });
+        } else {
+          broadcast({ type: 'kill', killerId: null, killerScore: 0, victimId: target.id });
+        }
+      } else {
+        broadcast({ type: 'kill', killerId: killerId, killerScore: 0, victimId: target.id });
       }
+    } else {
+      broadcast({ type: 'kill', killerId: null, killerScore: 0, victimId: target.id });
     }
 
     setTimeout(() => {
@@ -180,7 +197,7 @@ function damagePlayer(target, damage, killerId) {
       target.z = respawn.z;
       target.health = 100;
       broadcast({ type: 'respawn', id: target.id, x: target.x, z: target.z, health: target.health });
-    }, 1500);
+    }, 10500);
   }
 }
 
@@ -237,7 +254,7 @@ function zombieTick() {
         zombie.z += (dz / len) * ZOMBIE_SPEED * dt;
       } else if (now - zombie.lastAttack > ZOMBIE_ATTACK_COOLDOWN_MS) {
         zombie.lastAttack = now;
-        damagePlayer(nearest, ZOMBIE_DAMAGE, null);
+        damagePlayer(nearest, ZOMBIE_DAMAGE, 'zombie_' + zombie.id);
       }
     }
 
@@ -263,6 +280,125 @@ function stopZombieMode() {
   roundTimer = null;
   zombies.clear();
   zombieRound = 0;
+}
+
+// --- AI Bots AI & Behavior ---------------------------------------------
+
+function startBotAI() {
+  if (botTickInterval !== null) return;
+  botTickInterval = setInterval(runBotAI, BOT_TICK_MS);
+  console.log(`[bots] AI system initialized at ${BOT_TICK_MS}ms interval.`);
+}
+
+function stopBotAI() {
+  if (botTickInterval !== null) {
+    clearInterval(botTickInterval);
+    botTickInterval = null;
+  }
+  console.log('[bots] AI system stopped.');
+}
+
+function runBotAI() {
+  const dt = BOT_TICK_MS / 1000;
+  const now = Date.now();
+
+  const bots = Array.from(players.values()).filter(p => p.isBot);
+  if (bots.length === 0) return;
+
+  const allPlayers = Array.from(players.values());
+
+  for (const bot of bots) {
+    if (bot.health <= 0) continue; // dead bots do not think
+
+    // If friendlyFire is true, it is Free For All (everyone vs everyone).
+    // Otherwise, we use teams (Team 1 vs Team 2).
+    let targets = [];
+    if (friendlyFire) {
+      targets = allPlayers.filter(p => p.id !== bot.id && p.health > 0);
+    } else {
+      if (bot.team === 1) {
+        targets = allPlayers.filter(p => p.team === 2 && p.health > 0);
+      } else {
+        targets = allPlayers.filter(p => p.team === 1 && p.health > 0);
+      }
+    }
+
+    if (targets.length === 0) {
+      // Idle movement: rotate or pacing
+      bot.angle += (Math.random() - 0.5) * 0.2;
+      continue;
+    }
+
+    // Find closest target
+    let closestTarget = null;
+    let minDist = Infinity;
+    for (const t of targets) {
+      const dist = Math.hypot(t.x - bot.x, t.z - bot.z);
+      if (dist < minDist) {
+        minDist = dist;
+        closestTarget = t;
+      }
+    }
+
+    if (!closestTarget) continue;
+
+    // Aim orientation
+    const dx = closestTarget.x - bot.x;
+    const dz = closestTarget.z - bot.z;
+    bot.angle = Math.atan2(-dx, -dz);
+
+    // Calculate vertical pitch for the bot aiming at the target's chest
+    const dy = (closestTarget.y || 0) + 1.2 - (bot.y || 0);
+    const dist2D = Math.hypot(dx, dz) || 0.001;
+    bot.pitch = Math.atan2(dy, dist2D);
+
+    // Speed adjustment based on active weapon
+    const speed = bot.weapon === 'awp' ? 1.7 : 2.4;
+
+    // Follow and engage target
+    if (minDist > 14) {
+      bot.x += (-Math.sin(bot.angle)) * speed * dt;
+      bot.z += (-Math.cos(bot.angle)) * speed * dt;
+    } else if (minDist > 5) {
+      // Strafe sideways to make them harder to hit
+      const circleAngle = bot.angle + Math.PI / 2;
+      bot.x += (-Math.sin(circleAngle)) * (speed * 0.6) * dt;
+      bot.z += (-Math.cos(circleAngle)) * (speed * 0.6) * dt;
+    }
+
+    // Boundary constraints (WORLD_SIZE = 240, half = 120)
+    const boundary = 105;
+    bot.x = Math.max(-boundary, Math.min(boundary, bot.x));
+    bot.z = Math.max(-boundary, Math.min(boundary, bot.z));
+
+    // Broadcast bot movement update to clients
+    broadcast({ 
+      type: 'update', 
+      id: bot.id, 
+      x: bot.x, 
+      y: bot.y || 0, 
+      z: bot.z, 
+      angle: bot.angle,
+      pitch: bot.pitch || 0,
+      weapon: bot.weapon || 'pistol'
+    });
+
+    // Gun fire loop
+    const fireCooldown = bot.weapon === 'awp' ? 2200 : (bot.weapon === 'shotgun' ? 1300 : 380);
+    if (now - bot.lastShot > fireCooldown && minDist < 60) {
+      bot.lastShot = now;
+
+      // Broadcast shoot event so players see tracer bullet lines
+      broadcast({ type: 'shoot', id: bot.id, x: bot.x, z: bot.z, angle: bot.angle });
+
+      // Hit probability (balances gameplay difficulty)
+      const hitChance = bot.weapon === 'awp' ? 0.45 : (bot.weapon === 'shotgun' ? 0.35 : 0.28);
+      if (Math.random() < hitChance) {
+        const damage = bot.weapon === 'awp' ? 65 : (bot.weapon === 'shotgun' ? 35 : 12);
+        damagePlayer(closestTarget, damage, bot.id);
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -302,6 +438,8 @@ wss.on('connection', (ws) => {
 
       if (activeMap === null) {
         activeMap = MAP_IDS.includes(msg.mapPreference) ? msg.mapPreference : DEFAULT_MAP;
+        // Default to true (Free For All / Friendly fire enabled) unless explicitly configured otherwise
+        friendlyFire = msg.friendlyFire !== false && msg.friendlyFire !== 'false' && msg.friendlyFire !== 0 && msg.friendlyFire !== '0';
       }
 
       const player = {
@@ -317,12 +455,74 @@ wss.on('connection', (ws) => {
         angle: 0,
         health: 100,
         score: 0,
+        team: Number(msg.team) === 2 ? 2 : 1,
       };
 
       players.set(id, player);
       ws.playerId = id;
 
       if (MAP_MODES[activeMap] === 'zombies') startZombieMode();
+
+      // Spawn requested AI Bots if this is the first real player joining!
+      const realPlayersCount = Array.from(players.values()).filter(p => !p.isBot).length;
+      if (realPlayersCount === 1) {
+        const allyBotsCount = Math.min(10, Math.max(0, Number(msg.allyBotsCount) || 0));
+        const enemyBotsCount = Math.min(10, Math.max(0, Number(msg.enemyBotsCount) || 0));
+
+        console.log(`[bots] Spawning requested matches: ${allyBotsCount} Allies and ${enemyBotsCount} Enemies.`);
+
+        // Spawn Ally Bots
+        for (let i = 0; i < allyBotsCount; i++) {
+          const bId = nextId++;
+          const bSpawn = nextSpawn();
+          const botPlayer = {
+            id: bId,
+            name: `[BOT] Ally ${String.fromCharCode(65 + i)}`,
+            isBot: true,
+            team: 1, // Allies
+            weapon: WEAPON_IDS[Math.floor(Math.random() * WEAPON_IDS.length)],
+            skin: 'navy',
+            accent: 'white',
+            headgear: i % 2 === 0 ? 'helmet' : 'none',
+            x: bSpawn.x,
+            y: 0,
+            z: bSpawn.z,
+            angle: 0,
+            health: 100,
+            score: 0,
+            lastShot: 0,
+          };
+          players.set(bId, botPlayer);
+        }
+
+        // Spawn Enemy Bots
+        for (let i = 0; i < enemyBotsCount; i++) {
+          const bId = nextId++;
+          const bSpawn = nextSpawn();
+          const botPlayer = {
+            id: bId,
+            name: `[BOT] Enemy ${String.fromCharCode(88 - i)}`, // Enemy X, W, V...
+            isBot: true,
+            team: 2, // Enemies
+            weapon: WEAPON_IDS[Math.floor(Math.random() * WEAPON_IDS.length)],
+            skin: 'crimson',
+            accent: 'crimson',
+            headgear: i % 2 === 1 ? 'cap' : 'none',
+            x: bSpawn.x,
+            y: 0,
+            z: bSpawn.z,
+            angle: 0,
+            health: 100,
+            score: 0,
+            lastShot: 0,
+          };
+          players.set(bId, botPlayer);
+        }
+
+        if (allyBotsCount > 0 || enemyBotsCount > 0) {
+          startBotAI();
+        }
+      }
 
       ws.send(
         JSON.stringify({
@@ -331,6 +531,7 @@ wss.on('connection', (ws) => {
           self: player,
           players: playerList(),
           map: activeMap,
+          friendlyFire: friendlyFire,
           zombies: Array.from(zombies.values()),
           zombieRound,
         })
@@ -351,8 +552,25 @@ wss.on('connection', (ws) => {
           p.z = msg.z;
           p.angle = msg.angle;
           if (typeof msg.y === 'number') p.y = msg.y; // jetpack height, optional for older clients
-          broadcast({ type: 'update', id: p.id, x: p.x, y: p.y, z: p.z, angle: p.angle }, ws);
+          if (msg.weapon) p.weapon = msg.weapon;
+          if (typeof msg.pitch === 'number') p.pitch = msg.pitch;
+          
+          broadcast({ 
+            type: 'update', 
+            id: p.id, 
+            x: p.x, 
+            y: p.y, 
+            z: p.z, 
+            angle: p.angle,
+            pitch: typeof msg.pitch === 'number' ? msg.pitch : 0,
+            weapon: p.weapon
+          }, ws);
         }
+        break;
+      }
+
+      case 'ping': {
+        if (typeof msg.t === 'number') ws.send(JSON.stringify({ type: 'pong', t: msg.t }));
         break;
       }
 
@@ -361,9 +579,25 @@ wss.on('connection', (ws) => {
         break;
       }
 
+      case 'rocket': {
+        const nums = [msg.x, msg.y, msg.z, msg.dx, msg.dy, msg.dz];
+        if (nums.every((n) => typeof n === 'number')) {
+          broadcast({ type: 'rocket', id: p.id, x: msg.x, y: msg.y, z: msg.z, dx: msg.dx, dy: msg.dy, dz: msg.dz }, ws);
+        }
+        break;
+      }
+
+      case 'explosion': {
+        if (typeof msg.x === 'number' && typeof msg.y === 'number' && typeof msg.z === 'number') {
+          broadcast({ type: 'explosion', id: p.id, x: msg.x, y: msg.y, z: msg.z }, ws);
+        }
+        break;
+      }
+
       case 'hit': {
         const target = players.get(msg.targetId);
         if (!target || target.id === p.id || target.health <= 0) return;
+        if (!friendlyFire && target.team === p.team) return; // Prevent friendly-fire unless friendlyFire is enabled
         const damage = Math.min(100, Math.max(1, Number(msg.damage) || 20));
         damagePlayer(target, damage, p.id);
         break;
@@ -395,10 +629,22 @@ wss.on('connection', (ws) => {
       players.delete(ws.playerId);
       broadcast({ type: 'leave', id: ws.playerId });
       console.log(`[-] Player ${ws.playerId} disconnected. Total players: ${players.size}`);
-      if (players.size === 0) {
+      
+      const realPlayersRemaining = Array.from(players.values()).filter(p => !p.isBot).length;
+      if (realPlayersRemaining === 0) {
+        // Clear all AI bots out of the players list
+        for (const p of players.values()) {
+          if (p.isBot) broadcast({ type: 'leave', id: p.id });
+        }
+        for (const [id, p] of players.entries()) {
+          if (p.isBot) players.delete(id);
+        }
+        
         activeMap = null; // next match's first joiner picks fresh
+        friendlyFire = true;
         stopZombieMode();
-        console.log('  All players left — map will be re-selected by the next joiner.');
+        stopBotAI();
+        console.log('  All real players left — map and AI bots cleared.');
       }
     }
   });

@@ -12,10 +12,16 @@ involved.
   model/texture files to source, license, or ship):
   - **Forest Outpost** (PvP) — ~220 layered-canopy trees, clustered rock
     formations, and a dense instanced grass field.
-  - **Techbase Arena** (PvP) — a dim concrete facility with crate and
-    slab cover.
-  - **Outbreak Facility** (co-op Zombies) — the same enclosed arena
-    layout, re-themed with red emergency lighting, where you and your
+  - **Ironvale Industrial** (PvP) — a complete factory district with
+    enterable warehouses, loading yards, tanks, pipe racks, chimneys,
+    cargo containers, roads, street lighting, and a workers' village. The
+    village has eight enterable furnished homes, gardens, a shared green,
+    street furniture, trees, and animated civilian residents.
+    A connected city street adds three mixed-use buildings with enterable
+    shops, accessible second floors, working exterior staircases, balconies,
+    rooftop equipment, parked cars, pavements, and additional pedestrians.
+  - **Outbreak Facility** (co-op Zombies) — the same industrial district
+    re-themed with quarantine signage and red emergency lighting, where you and your
     friend fight off endless rounds of server-simulated zombies instead
     of each other. See "Zombies mode" below.
   - The match's map is locked in by whichever player deploys first;
@@ -28,41 +34,46 @@ involved.
   low-poly humanoid (torso, head, swinging arms and legs, built from
   real body proportions — not a single capsule) in their chosen skin and
   accent colors with optional headgear, a name tag that always faces the
-  camera, and a visible jetpack flame while airborne.
+  camera, and a visible thrust flame while flying.
 - **Controls**: WASD **or the arrow keys** both work for movement.
-- **Weapons**: Pistol, Shotgun (multi-pellet spread), Chaingun (hold to
-  fire), Rocket Launcher, and a real **AK-47** — switch with `1`-`5` or
-  the scroll wheel. Your lobby pick is free; the rest must be bought
-  in-match. The AK's geometry is ported from the open-source
-  [Tiny Strike](https://github.com/guyz/tinystrike) project (MIT) — a
-  true-to-life AKM model (stamped receiver, gas tube, curved 30-round
-  magazine, correct real-world dimensions), not a simple box-and-cylinder
-  assembly like the other four. See `public/js/weapons/LICENSE` for full
-  attribution; it's rendered with simplified fallback materials since the
-  much larger baked-texture system it was originally built against isn't
-  part of this project.
-- **Economy**: kills (and the hidden secret) pay out money. Spend it at
-  **buy stations** (3D kiosks scattered on the map) to unlock the other
-  weapons, or at the **upgrade bench** to boost your currently equipped
-  weapon's damage and fire rate. Walk up to one and press `E`.
-- **Inventory**: press `Tab` to open your loadout — see what you own,
-  what's locked and its price, and click an owned weapon to equip it.
-- **Jetpack**: hold `F` to thrust upward against gravity on a limited,
-  regenerating fuel tank (shown as a bar at the bottom of the HUD) — fly
-  around the map, Call-of-Duty-exo-suit style.
+- **Weapons** (8 total, switch with `1`-`8`, the scroll wheel, or `T` to
+  jump straight to the Rocket Launcher): every weapon is unlocked and
+  fully kitted out for every player from the moment they spawn — nothing
+  to buy, nothing to grind. Pistol, Shotgun, Chaingun, and Rocket
+  Launcher are hand-built primitive geometry; **AK-47, M4A1-S, MP5, and
+  AWP** are real `.glb` 3D models (true-to-life dimensions and
+  proportions — an AWP really is ~1.15 m long here) sourced from the
+  open-source [Tiny Strike](https://github.com/guyz/tinystrike) project
+  (MIT/ISC) — see `public/assets/weapons/LICENSE` and
+  `public/js/weapons/LICENSE` for full attribution. Each loads once and is
+  cached (switching back to a gun you've already equipped is instant), and
+  falls back to a simple placeholder if a model ever fails to load so a
+  bad file can't crash the match. The Rocket Launcher is a real traveling
+  projectile that detonates in an area-of-effect explosion wherever it
+  lands — every other weapon is instant hitscan.
+- **Inventory**: press `Tab` to open your loadout and click any weapon to
+  equip it instantly.
+- **Flight**: double-tap Space (or press `F`) to toggle flight on/off,
+  completely unlimited — no fuel, no height cap. While flying, hold Space
+  to climb and release to hover in place; double-tap Space again to drop
+  back into normal gravity.
 - **Movement**: WASD with acceleration/friction for a weighted feel,
-  Space to jump (with real gravity), Shift to sprint, mouse-look.
+  Shift to sprint, mouse-look.
+- **Vertical exploration**: city stairs use elevation-aware movement and
+  collision, so you can walk to upper floors and balconies and fall naturally
+  when stepping off a raised surface.
 - **Scoring**: kills are tracked server-side and shown as a live,
   rank-sorted scoreboard; a banner announces frags as they happen.
 - **Quality of life**: your name, server address, and loadout are
   remembered in your browser (`localStorage`) between visits.
 - **Easter eggs**: a hidden area to find (tracked separately from kills,
-  like the original games' "Secrets" stat, and worth a money bonus),
-  plus classic Doom cheat-code nods — type `IDDQD`, `IDKFA`, or `IDCLIP`
-  while playing for a nostalgic banner (cosmetic only, by design).
+  like the original games' "Secrets" stat), plus classic Doom cheat-code
+  nods — type `IDDQD`, `IDKFA`, or `IDCLIP` while playing for a
+  nostalgic banner (cosmetic only, by design).
 - **Multiplayer**: a small Node.js server relays player positions
-  (including height, so jetpack flight is visible to others), shots,
-  hits, kills and respawns between connected browsers over WebSockets.
+  (including height, so flight is visible to others), shots, rocket
+  flight and explosions, hits, kills and respawns between connected
+  browsers over WebSockets.
 
 ## Zombies mode
 
@@ -79,8 +90,6 @@ of PvP:
   on contact — there's no line-of-sight check, so don't expect them to
   respect cover; this is a deliberately simple AI, not a pathfinding engine.
 - No friendly fire — your shots only ever hit zombies on this map.
-- The same money/buy-station/upgrade-bench economy works here too, so
-  your zombie kills fund better weapons just like in PvP.
 - There's no down-and-revive mechanic, perks, Pack-a-Punch, or a Mystery
   Box — dying just respawns you, same as in PvP. This is a genuine
   round-based horde mode, not a feature-complete recreation of a specific
@@ -94,14 +103,18 @@ is not, and was never going to be, an actual copy of Call of Duty:
 - **Character models are articulated low-poly primitives** (a boxy torso,
   a sphere head, cylinder limbs with real human proportions and a basic
   walk-cycle animation) — not detailed, textured, or facially animated
-  human models. Realistic human characters require an actual 3D art
-  pipeline (modeling, rigging, skinning, animating in software like
-  Blender) — far beyond what code alone can produce, and this project has
-  no way to download or license pre-made character assets.
-- **Trees, rocks, and grass are procedurally built from primitive
-  geometry** (layered cones, clustered dodecahedra, thousands of
-  GPU-instanced billboard blades) using real-world proportions and
-  structure as a reference — not photo-scanned or textured foliage assets.
+  human models. Fully detailed networked characters would require a larger
+  art and animation pipeline, so remote combatants remain lightweight for
+  multiplayer performance.
+- **Village civilians are the exception**: they use the rigged and animated
+  Cesium Man glTF model from Khronos Group's Sample Assets through Three.js
+  `GLTFLoader`, `SkeletonUtils`, and `AnimationMixer`. The model is bundled
+  locally under CC BY 4.0; full attribution is in
+  `public/assets/characters/LICENSE.md`.
+- **Trees, rocks, and grass are procedurally built from geometry** (layered
+  conifers, branching multi-crown deciduous trees, clustered dodecahedra,
+  and thousands of tapered GPU-instanced grass blades) using real-world
+  proportions and structure as a reference — not photo-scanned foliage.
 - **Skins, accents, and headgear are solid colors / simple primitive
   shapes** (e.g. a helmet is a half-sphere), not textured camouflage
   patterns or modeled cosmetic items.
@@ -112,22 +125,24 @@ is not, and was never going to be, an actual copy of Call of Duty:
 - **No real Call of Duty assets, maps, or content were used or copied** —
   everything here is built from primitive geometry in code. Using actual
   COD assets would be a copyright violation.
-- **The economy (money, buy stations, upgrades, inventory) is tracked
-  locally per client**, not validated by the server — consistent with
-  this project's existing "thin relay, no anti-cheat" design (the server
-  already trusts each client's self-reported hit damage the same way).
-  Fine for friends playing together; not tamper-proof.
-- **No killstreaks, perks, prestige, battle pass, or other meta-progression
-  systems** — this is a straightforward deathmatch-plus-economy loop.
+- **Hit damage is self-reported by each client**, not validated by the
+  server — consistent with this project's "thin relay, no anti-cheat"
+  design. Fine for friends playing together; not tamper-proof.
+- **No killstreaks, perks, prestige, battle pass, or other
+  meta-progression systems, and no economy to grind** — every weapon is
+  already free and fully kitted out for everyone, so this is a
+  straightforward deathmatch, not a progression loop.
 - The map is chosen by whoever deploys first (see above) — there's no
   lobby voting system.
 
 What you *do* get: real 3D terrain you can walk around in (at 5.76x the
 previous map's area), trees/rocks/crates you physically collide with,
-grass fields, jumping and jetpack flight, visible teammates/opponents
-with actual limbs in colors you chose, a working buy/upgrade economy, an
-inventory screen, a proper pre-match loadout screen, and working
-multiplayer kill tracking — a genuine small-scale FPS, built honestly.
+grass fields, unlimited flight, visible teammates/opponents with actual
+limbs in colors you chose, every weapon free and unlocked from the start
+(including a real rocket launcher with a traveling projectile and an
+area-of-effect explosion), an inventory screen, a proper pre-match
+loadout screen, and working multiplayer kill tracking — a genuine
+small-scale FPS, built honestly.
 
 ## 1. Install
 
@@ -219,9 +234,8 @@ doom/
 
 ## Customizing
 
-- **Weapons/skins/maps/prices/economy**: edit the definitions in
-  `public/js/constants.js` (`WEAPONS`, `SKINS`, `MAPS`, `BUY_STATIONS`,
-  `UPGRADE_BENCHES`, `STARTING_MONEY`, `KILL_REWARD`, jetpack tuning, etc).
+- **Weapons/skins/maps**: edit the definitions in `public/js/constants.js`
+  (`WEAPONS`, `SKINS`, `MAPS`, flight/rocket tuning, etc).
 - **Map layout**: edit `public/js/world.js` (tree/rock/grass/crate
   placement, counts, colors, fog, lighting).
 - **Character model**: edit `public/js/playerModel.js` (body proportions,

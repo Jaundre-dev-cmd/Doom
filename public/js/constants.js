@@ -9,20 +9,26 @@ export const MOVE_SPEED = 6;          // units/sec at full acceleration
 export const SPRINT_MULTIPLIER = 1.6;
 export const ACCELERATION = 30;       // units/sec^2
 export const FRICTION = 18;           // units/sec^2
-export const JUMP_SPEED = 6.5;
 export const GRAVITY = 18;
 export const MOUSE_SENSITIVITY = 0.0022;
 export const MAX_PITCH = Math.PI / 2 - 0.05;
 export const NETWORK_SEND_INTERVAL_MS = 50; // ~20 updates/sec
 
-// Jetpack: hold the key to thrust upward against gravity, draining fuel;
-// fuel regenerates whenever you're not thrusting. Net accel while
-// thrusting is JETPACK_ACCEL - GRAVITY, so it must exceed GRAVITY to climb.
-export const JETPACK_ACCEL = 30;
-export const JETPACK_MAX_VY = 9;
-export const JETPACK_FUEL_MAX = 100;
-export const JETPACK_FUEL_DRAIN_PER_SEC = 28;
-export const JETPACK_FUEL_REGEN_PER_SEC = 16;
+// Free flight: unlimited, no fuel. A double-tap of Space (or a single
+// press of F) toggles it on/off — see main.js's keydown handler. While
+// on, gravity is suspended entirely: holding Space climbs at this rate;
+// releasing it just hovers (no fuel to run out, no height cap).
+export const FLY_SPEED = 10;
+
+// Rocket launcher: unlike every other weapon (instant hitscan), this one
+// is a real traveling projectile that flies out from the camera and
+// detonates in an area-of-effect explosion wherever it ends up — a wall,
+// the ground, or a hit target — rather than resolving damage the instant
+// you click. See the rocket/explosion handling in main.js.
+export const ROCKET_SPEED = 45; // units/sec
+export const ROCKET_MAX_RANGE = 140; // fizzles out with no explosion past this
+export const ROCKET_EXPLOSION_RADIUS = 7; // splash damage falls off to 0 at this distance
+export const ROCKET_COLLISION_RADIUS = 0.15; // a little forgiveness against thin obstacles
 
 // Corners of the (now much bigger) map — valid spawn points on every map,
 // since all maps share the same WORLD_SIZE ground footprint.
@@ -63,95 +69,85 @@ export const HEADGEAR = [
 ];
 export const HEADGEAR_ORDER = HEADGEAR.map((h) => h.id);
 
-// Economy: kills (and the hidden secret) pay out money, spent at buy
-// stations (unlock a weapon for the rest of the match) and an upgrade
-// bench (boost a weapon you already own). Money and purchases are
-// tracked locally per client, not by the server — consistent with this
-// project's existing thin-relay, no-anti-cheat design (the server
-// already trusts each client's self-reported hit damage the same way).
-export const STARTING_MONEY = 500;
-export const KILL_REWARD = 500;
-export const SECRET_REWARD = 250;
-export const INTERACT_RADIUS = 3.5; // how close you must stand to a station/bench
-
+// Every weapon is unlocked and fully kitted out for every player from the
+// moment they spawn — no economy, no buy stations, no upgrade bench, no
+// grind. Stats below are what used to be each weapon's purchasable
+// "upgraded" tier; that tier is just the weapon's stats now.
 export const WEAPONS = {
   pistol: {
     name: 'Pistol',
-    damage: 20,
-    fireCooldownMs: 300,
+    damage: 32,
+    fireCooldownMs: 255,
     pellets: 1,
     spread: 0,
     auto: false,
-    price: 0, // starting weapon — always owned
-    upgradeCost: 1500,
-    upgradeDamageMultiplier: 1.6,
-    upgradeFireRateMultiplier: 0.85,
   },
   shotgun: {
     name: 'Shotgun',
-    damage: 12,
-    fireCooldownMs: 800,
+    damage: 18,
+    fireCooldownMs: 640,
     pellets: 6,
     spread: 0.12,
     auto: false,
-    price: 1000,
-    upgradeCost: 2000,
-    upgradeDamageMultiplier: 1.5,
-    upgradeFireRateMultiplier: 0.8,
   },
   chaingun: {
     name: 'Chaingun',
-    damage: 9,
-    fireCooldownMs: 110,
+    damage: 13,
+    fireCooldownMs: 83,
     pellets: 1,
     spread: 0.035,
     auto: true,
-    price: 1500,
-    upgradeCost: 2500,
-    upgradeDamageMultiplier: 1.4,
-    upgradeFireRateMultiplier: 0.75,
   },
   rocket: {
     name: 'Rocket Launcher',
-    damage: 65,
-    fireCooldownMs: 1100,
+    damage: 98,
+    fireCooldownMs: 880,
     pellets: 1,
     spread: 0,
     auto: false,
-    price: 3000,
-    upgradeCost: 3500,
-    upgradeDamageMultiplier: 1.5,
-    upgradeFireRateMultiplier: 0.8,
   },
   ak47: {
     name: 'AK-47',
-    // Real procedurally modelled geometry (ported from the open-source Tiny
-    // Strike project — see public/js/weapons/) at true-to-life AKM
-    // dimensions, not a simple primitive assembly like the other weapons.
-    damage: 24,
-    fireCooldownMs: 100, // ~600 RPM
+    // Real .glb model (ported from the open-source Tiny Strike project —
+    // see public/js/weapons/ and public/assets/weapons/LICENSE) at
+    // true-to-life AKM proportions, not a primitive-box assembly like the
+    // other starter weapons.
+    damage: 32,
+    fireCooldownMs: 85,
     pellets: 1,
     spread: 0.045,
     auto: true,
-    procedural: true, // tells weaponView.js to use the ported AK builder
-    price: 2000,
-    upgradeCost: 2800,
-    upgradeDamageMultiplier: 1.35,
-    upgradeFireRateMultiplier: 0.85,
+  },
+  m4a1: {
+    name: 'M4A1-S',
+    // Also a real .glb model — see ak47's comment above.
+    damage: 30,
+    fireCooldownMs: 128,
+    pellets: 1,
+    spread: 0.03,
+    auto: true,
+  },
+  mp5: {
+    name: 'MP5',
+    // Also a real .glb model — see ak47's comment above.
+    damage: 10,
+    fireCooldownMs: 68, // very fast SMG
+    pellets: 1,
+    spread: 0.05,
+    auto: true,
+  },
+  awp: {
+    name: 'AWP',
+    // Also a real .glb model — see ak47's comment above. A proper sniper
+    // archetype: devastating, slow, and precise.
+    damage: 119,
+    fireCooldownMs: 1275,
+    pellets: 1,
+    spread: 0.004,
+    auto: false,
   },
 };
-export const WEAPON_ORDER = ['pistol', 'shotgun', 'chaingun', 'rocket', 'ak47'];
-
-// Buy stations (unlock a weapon) and an upgrade bench (boost one you
-// own), placed as real 3D kiosks in the world. world.js keeps the ground
-// near these coordinates clear of trees/rocks/crates.
-export const BUY_STATIONS = [
-  { id: 'buy-shotgun', weapon: 'shotgun', x: -25, z: 0 },
-  { id: 'buy-chaingun', weapon: 'chaingun', x: 25, z: 0 },
-  { id: 'buy-rocket', weapon: 'rocket', x: 0, z: -25 },
-  { id: 'buy-ak47', weapon: 'ak47', x: -25, z: -25 },
-];
-export const UPGRADE_BENCHES = [{ id: 'bench-main', x: 0, z: 25 }];
+export const WEAPON_ORDER = ['pistol', 'shotgun', 'chaingun', 'rocket', 'ak47', 'm4a1', 'mp5', 'awp'];
 
 // Three maps, all built from primitive geometry (no external model/
 // texture files to source, license, or ship). `terrain` selects which
@@ -161,7 +157,7 @@ export const MAPS = {
   forest: {
     id: 'forest',
     name: 'Forest Outpost',
-    description: 'Open woodland — trees, grass, and rock cover.',
+    description: 'Deathmatch combat in open woodland.',
     mode: 'pvp',
     terrain: 'forest',
     sky: 0x8fc7ff,
@@ -173,22 +169,22 @@ export const MAPS = {
   },
   techbase: {
     id: 'techbase',
-    name: 'Techbase Arena',
-    description: 'A dim concrete facility with metal crate cover.',
+    name: 'Ironvale Industrial',
+    description: 'Factories, a workers village, and a multi-level city district.',
     mode: 'pvp',
     terrain: 'techbase',
-    sky: 0x1b2430,
-    fogColor: 0x1b2430,
-    fogDensity: 0.01,
-    groundColor: 0x555a60,
-    ambient: 0x334455,
-    sun: 0xaad4ff,
+    sky: 0x8294a2,
+    fogColor: 0x98a3a8,
+    fogDensity: 0.0045,
+    groundColor: 0x686d70,
+    ambient: 0x66757e,
+    sun: 0xffefd1,
   },
   zombies: {
     id: 'zombies',
     name: 'Outbreak Facility',
-    description: 'Co-op survival — fend off endless rounds of zombies.',
-    mode: 'zombies',
+    description: 'Deathmatch combat inside a moody horror-red research base.',
+    mode: 'pvp',
     terrain: 'techbase',
     // Moody dark-red horror palette — but not literally near-black, which
     // (combined with realistic tone mapping) rendered as an unplayable
@@ -206,8 +202,8 @@ export const MAP_ORDER = ['forest', 'techbase', 'zombies'];
 export const DEFAULT_MAP = 'forest';
 
 // A hidden area (world-space box) that awards a one-time "secret found"
-// notification and a money bonus — tracked separately from kills, a nod
-// to the original Doom games' intermission "Secrets: x/y" stat.
+// notification — a nod to the original Doom games' intermission
+// "Secrets: x/y" stat.
 export const SECRET_AREA = { x0: -4, z0: -4, x1: 4, z1: 4 };
 
 // Zombies mode (co-op survival): round-based AI simulated server-side so
@@ -232,5 +228,4 @@ export const ZOMBIE_ATTACK_COOLDOWN_MS = 1000;
 export const ZOMBIES_PER_ROUND_BASE = 4;
 export const ZOMBIES_PER_ROUND_INCREMENT = 2;
 export const ROUND_INTERMISSION_MS = 8000;
-export const ZOMBIE_KILL_REWARD = 100;
 export const ZOMBIE_TICK_MS = 120; // ~8Hz server AI tick

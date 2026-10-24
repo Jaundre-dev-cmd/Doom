@@ -4,12 +4,241 @@
 // more like a real gun silhouette.
 
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { buildAK } from './weapons/models/ak.js';
 import { buildWeaponObject } from './weapons/build.js';
 import { WeaponMaterials } from './weapons/materials.js';
 
+// Real .glb models (ported from the open-source Tiny Strike project — see
+// public/assets/weapons/LICENSE for full attribution). Each is loaded once
+// and cached; every equip after that clones the cached template, so
+// switching weapons back and forth never re-fetches or re-parses the file.
+const GLB_PATHS = {
+  pistol: 'assets/weapons/glock.glb',
+  ak47: 'assets/weapons/ak47.glb',
+  m4a1: 'assets/weapons/m4a1.glb',
+  mp5: 'assets/weapons/mp5.glb',
+  awp: 'assets/weapons/awp.glb',
+};
+
+const gltfLoader = new GLTFLoader();
+const glbTemplateCache = new Map(); // weaponKey -> Promise<THREE.Object3D>
+
+function loadGlbTemplate(weaponKey) {
+  if (!glbTemplateCache.has(weaponKey)) {
+    const promise = gltfLoader.loadAsync(GLB_PATHS[weaponKey]).then((gltf) => gltf.scene);
+    glbTemplateCache.set(weaponKey, promise);
+  }
+  return glbTemplateCache.get(weaponKey);
+}
+
 function metalMat(color, extra = {}) {
   return new THREE.MeshStandardMaterial({ color, metalness: 0.6, roughness: 0.35, ...extra });
+}
+
+// ---------------------------------------------------------------------------
+// First-person hands: a real skinned arm+hand model instead of a pair of
+// boxes. npc-arms-ct.glb is Tiny Strike's own viewmodel arm — a body-stripped,
+// CC0 (Quaternius) right forearm with a full finger skeleton (knuckle and
+// fingertip bones per finger, two thumb bones) — see
+// public/assets/weapons/LICENSE for attribution. It is loaded once, and every
+// equip clones its skeleton (SkeletonUtils.clone, so each weapon gets its own
+// posable bones without re-fetching or re-parsing the file).
+//
+// The per-family position/rotation/grip-curl numbers below are ported from
+// Tiny Strike's src/weapons/viewmodel.js (same MIT/ISC chain as
+// public/js/weapons/, see public/js/weapons/LICENSE), which derived them by
+// measuring this exact arm asset against this exact weapon convention
+// (meters, origin at the grip, muzzle along -Z). ak47/m4a1/mp5/awp/pistol use
+// the real .glb files Tiny Strike authored to that convention, so those
+// numbers transfer directly. shotgun/chaingun/rocket are this project's own
+// procedural models, which were not authored grip-at-origin, so they get a
+// hand-placed override tuned to sit on each model's own grip instead.
+const ARMS_PATH = 'assets/weapons/npc-arms-ct.glb';
+let armsTemplatePromise = null;
+
+function loadArmsTemplate() {
+  if (!armsTemplatePromise) {
+    armsTemplatePromise = gltfLoader.loadAsync(ARMS_PATH).then((gltf) => {
+      const grip = gltf.scene.getObjectByName('VM_Grip');
+      if (!grip) throw new Error('npc-arms-ct.glb has no VM_Grip root');
+      return grip;
+    });
+  }
+  return armsTemplatePromise;
+}
+
+// Measured off npc-arms-ct.glb: the authored fist is life-size (a 288 x 320 x
+// 330 mm stylised hand) and reads as a catcher's mitt next to a real-scale
+// gun, so it's scaled down to a gloved-human-hand size and re-seated so its
+// fist centre — not the arm's root bone — lands on the grip.
+const NPC_ARM_SCALE = 0.221;
+const NPC_ARM_FIST_CENTER = [0.045, -0.007, 0.012];
+
+// rot/scale per weapon family; pos is pre-solved (grip - R*S*fistCenter) for
+// the four grip-at-origin families. See the module comment above.
+const NPC_ARM_POSES = {
+  rifle: { pos: [-0.00661, -0.00731, 0.02467], rot: [-0.300, 0.524, 0], scale: NPC_ARM_SCALE },
+  smg: { pos: [-0.00660, -0.01078, 0.02399], rot: [-0.300, 0.524, 0], scale: NPC_ARM_SCALE },
+  sniper: { pos: [-0.00998, -0.00500, 0.02564], rot: [-0.300, 0.524, 0], scale: NPC_ARM_SCALE },
+  pistol: { pos: [-0.00996, -0.01854, 0.03216], rot: [-0.300, 0.524, 0], scale: NPC_ARM_SCALE },
+};
+
+const NPC_ARM_FAMILY = {
+  ak47: 'rifle',
+  m4a1: 'rifle',
+  mp5: 'smg',
+  awp: 'sniper',
+  pistol: 'pistol',
+  // No Tiny Strike equivalent for these three — held like rifles (two-handed,
+  // same grip rake/curl), with their own hand-placed seat below since their
+  // models aren't authored grip-at-origin.
+  shotgun: 'rifle',
+  chaingun: 'rifle',
+  rocket: 'rifle',
+};
+
+// Hand-placed seats for the procedural (non grip-at-origin) weapons, tuned
+// against where each one's own grip/handle geometry actually sits (see the
+// box positions in buildWeaponMesh above).
+const NPC_ARM_POSE_OVERRIDE = {
+  shotgun: { pos: [0.01, -0.06, -0.37], rot: [-0.300, 0.524, 0], scale: NPC_ARM_SCALE },
+  chaingun: { pos: [0.015, -0.11, -0.05], rot: [-0.300, 0.524, 0], scale: NPC_ARM_SCALE },
+  rocket: { pos: [-0.01, 0.01, 0.02], rot: [-0.300, 0.524, 0], scale: NPC_ARM_SCALE },
+};
+
+// Finger curl closes the authored (nearly-straight) hand onto the grip; long
+// guns curl just enough to stay visually connected (full curl reads as a
+// fist parked beside the gun), pistols keep the full wrap since the fist
+// under the slide is the weapon's whole contact patch.
+const NPC_ARM_GRIP = {
+  rifle: { curl: [0.35, 0.20, 0.12], thumb: [0.15, 0.05, 0.10] },
+  smg: { curl: [0.35, 0.20, 0.12], thumb: [0.15, 0.05, 0.10] },
+  sniper: { curl: [0.35, 0.20, 0.12], thumb: [0.15, 0.05, 0.10] },
+  pistol: { curl: [1.20, 0.50, 0.30], thumb: [0.35, 0.10, 0.30] },
+};
+
+// Bone names as actually exported in this file's skeleton (Blender's own
+// ".R" mirror-naming convention — verified against npc-arms-ct.glb directly;
+// Tiny Strike's own source comments a no-dot "Index1R" convention that does
+// not match the shipped asset).
+const NPC_FINGER_CHAINS = [
+  ['Index1.R', 'Index2.R', 'Index3.R'],
+  ['Middle1.R', 'Middle2.R', 'Middle3.R'],
+  ['Pinky1.R', 'Pinky2.R', 'Pinky3.R'],
+];
+
+/** Close the cloned hand's fingers onto the grip. Absolute, never cumulative. */
+function applyArmGrip(arms, family) {
+  const spec = NPC_ARM_GRIP[family] || NPC_ARM_GRIP.rifle;
+  const bones = new Map();
+  arms.traverse((o) => {
+    if (o.isBone) bones.set(o.name, o);
+  });
+  const rest = (bone, axis) => {
+    const key = 'armRest' + axis;
+    if (bone.userData[key] === undefined) bone.userData[key] = bone.rotation[axis];
+    return bone.userData[key];
+  };
+  for (const chain of NPC_FINGER_CHAINS) {
+    for (let i = 0; i < chain.length; i++) {
+      const bone = bones.get(chain[i]);
+      if (!bone) continue;
+      bone.rotation.x = rest(bone, 'x') - (spec.curl[i] || 0);
+    }
+  }
+  const t1 = bones.get('Thumb1.R');
+  const t2 = bones.get('Thumb2.R');
+  if (t1) {
+    t1.rotation.x = rest(t1, 'x') - (spec.thumb[0] || 0);
+    t1.rotation.z = rest(t1, 'z') + (spec.thumb[1] || 0);
+  }
+  if (t2) t2.rotation.x = rest(t2, 'x') - (spec.thumb[2] || 0);
+  arms.updateMatrixWorld(true);
+}
+
+// Builds this weapon's held arm. Returns null (never throws) on any failure
+// so a missing/corrupt arm asset falls back to the old box hands instead of
+// leaving the viewmodel without hands at all.
+async function buildArms(weaponKey) {
+  let template;
+  try {
+    template = await loadArmsTemplate();
+  } catch (err) {
+    console.warn('[weapons] failed to load npc-arms-ct.glb, using box-hand fallback:', err);
+    return null;
+  }
+  try {
+    const arms = cloneSkeleton(template);
+    arms.name = 'vm-arms-' + weaponKey;
+    arms.traverse((o) => {
+      o.frustumCulled = false;
+      if (o.isMesh) {
+        o.castShadow = false;
+        o.receiveShadow = true;
+      }
+    });
+    const family = NPC_ARM_FAMILY[weaponKey] || 'rifle';
+    const pose = NPC_ARM_POSE_OVERRIDE[weaponKey] || NPC_ARM_POSES[family] || NPC_ARM_POSES.rifle;
+    arms.position.fromArray(pose.pos);
+    arms.rotation.set(pose.rot[0], pose.rot[1], pose.rot[2]);
+    arms.scale.setScalar(pose.scale);
+    applyArmGrip(arms, family);
+    return arms;
+  } catch (err) {
+    console.warn('[weapons] failed to pose arms for ' + weaponKey + ', using box-hand fallback:', err);
+    return null;
+  }
+}
+
+// Last-resort fallback hands (two boxes) — used only if npc-arms-ct.glb fails
+// to load or clone, so a network hiccup never leaves the viewmodel with no
+// hands at all.
+function buildFallbackHands(weaponKey) {
+  const handsGroup = new THREE.Group();
+  handsGroup.name = 'hands-fallback';
+  const handMat = new THREE.MeshStandardMaterial({ color: 0xe0b894, roughness: 0.8 });
+
+  const rightHand = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.065, 0.12), handMat);
+  if (weaponKey === 'pistol') {
+    rightHand.position.set(0, -0.15, 0.08);
+  } else if (weaponKey === 'rocket') {
+    rightHand.position.set(0, 0.0, 0.0);
+  } else if (weaponKey === 'awp') {
+    rightHand.position.set(0.03, -0.16, -0.05);
+  } else if (weaponKey === 'ak47' || weaponKey === 'm4a1') {
+    rightHand.position.set(0.02, -0.14, -0.05);
+  } else if (weaponKey === 'mp5') {
+    rightHand.position.set(0.02, -0.12, 0.05);
+  } else {
+    rightHand.position.set(0, -0.12, 0.0);
+  }
+  handsGroup.add(rightHand);
+
+  if (weaponKey !== 'pistol') {
+    const leftHand = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.065, 0.12), handMat);
+    if (weaponKey === 'rocket') {
+      leftHand.position.set(-0.06, 0.04, -0.3);
+    } else if (weaponKey === 'awp') {
+      leftHand.position.set(-0.04, -0.08, -0.45);
+    } else if (weaponKey === 'ak47' || weaponKey === 'm4a1') {
+      leftHand.position.set(-0.03, -0.07, -0.42);
+    } else if (weaponKey === 'mp5') {
+      leftHand.position.set(-0.03, -0.05, -0.32);
+    } else if (weaponKey === 'shotgun') {
+      leftHand.position.set(-0.02, -0.06, -0.35);
+    } else {
+      leftHand.position.set(-0.02, -0.06, -0.3);
+    }
+    handsGroup.add(leftHand);
+  }
+
+  if (GLB_PATHS[weaponKey]) {
+    const glbScale = VIEWMODEL_TRANSFORMS[weaponKey]?.scale || 1;
+    handsGroup.scale.setScalar(1 / glbScale);
+  }
+  return handsGroup;
 }
 
 // Exported so world.js can reuse it to build a small "what this station
@@ -104,6 +333,49 @@ export function buildWeaponMesh(weaponKey) {
       break;
     }
 
+    case 'm4a1': {
+      const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.45), metalMat(0x2a2a2a, { metalness: 0.5 }));
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.04, 0.3), metalMat(0x333333));
+      rail.position.set(0, 0.08, -0.3);
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.3, 8), metalMat(0x1c1c1c));
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0.05, -0.45);
+      const stock = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.2), metalMat(0x1c1c1c, { roughness: 0.6 }));
+      stock.position.set(0, -0.02, 0.32);
+      const mag = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.22, 0.07), metalMat(0x2a2a2a, { metalness: 0.4 }));
+      mag.rotation.x = -0.25;
+      mag.position.set(0, -0.2, -0.05);
+      group.add(receiver, rail, barrel, stock, mag);
+      break;
+    }
+
+    case 'mp5': {
+      const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.1, 0.3), metalMat(0x2e2e2e, { metalness: 0.5 }));
+      const handguard = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.18, 8), metalMat(0x1c1c1c));
+      handguard.rotation.x = Math.PI / 2;
+      handguard.position.set(0, -0.01, -0.28);
+      const stock = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.18), metalMat(0x1c1c1c, { roughness: 0.6 }));
+      stock.position.set(0, -0.01, 0.26);
+      const mag = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.18, 0.06), metalMat(0x2a2a2a, { metalness: 0.4 }));
+      mag.position.set(0, -0.16, -0.02);
+      group.add(receiver, handguard, stock, mag);
+      break;
+    }
+
+    case 'awp': {
+      const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.5), metalMat(0x2a332a, { metalness: 0.3 }));
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.5, 10), metalMat(0x1a1a1a));
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0.02, -0.55);
+      const scopeTube = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.3, 10), metalMat(0x111111));
+      scopeTube.rotation.x = Math.PI / 2;
+      scopeTube.position.set(0, 0.13, -0.15);
+      const stock = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.12, 0.3), metalMat(0x2a332a, { roughness: 0.7, metalness: 0.1 }));
+      stock.position.set(0, -0.03, 0.35);
+      group.add(receiver, barrel, scopeTube, stock);
+      break;
+    }
+
     case 'rocket': {
       const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.9, 12), metalMat(0x3a4a3a, { roughness: 0.6 }));
       tube.rotation.x = Math.PI / 2;
@@ -135,10 +407,11 @@ export function buildWeaponMesh(weaponKey) {
 // Builds the real procedurally modelled AK-47 — true-to-life AKM dimensions,
 // a stamped-sheet receiver, gas tube, 30-round curved magazine, all authored
 // as geometry (ported from the open-source Tiny Strike project; see
-// public/js/weapons/). No shared procedural PBR texture library is supplied
-// (that's a separate, much larger subsystem this project doesn't have), so
-// WeaponMaterials falls back to its own plain metal/wood/polymer materials —
-// the geometry is the real thing; the shading is simplified.
+// public/js/weapons/). Used only if the baked ak47.glb fails to load. No
+// shared procedural PBR texture library is supplied (that's a separate,
+// much larger subsystem this project doesn't have), so WeaponMaterials
+// falls back to its own plain metal/wood/polymer materials — the geometry
+// is the real thing; the shading is simplified.
 function buildProceduralAK() {
   try {
     const model = buildAK();
@@ -151,17 +424,77 @@ function buildProceduralAK() {
     });
     return object;
   } catch (err) {
-    // A bug deep in ~6000 lines of ported code should never crash the game —
-    // fall back to the simple silhouette instead.
     console.warn('[weapons] procedural AK-47 build failed, using fallback silhouette:', err);
     return buildWeaponMesh('ak47');
   }
 }
 
-export function createWeaponView(weaponKey) {
+// Loads a real .glb model for weapons that have one. Falls back to the
+// procedural AK (ak47 only) or the simple silhouette if the fetch/parse
+// ever fails — a network hiccup or a missing file should never crash the
+// game, just show a plainer gun.
+async function buildGlbWeapon(weaponKey) {
+  try {
+    const template = await loadGlbTemplate(weaponKey);
+    const instance = template.clone(true);
+    instance.traverse((o) => {
+      if (!o.isMesh) return;
+      o.castShadow = false;
+      o.frustumCulled = false;
+    });
+    return instance;
+  } catch (err) {
+    console.warn(`[weapons] failed to load ${weaponKey}.glb, using fallback:`, err);
+    return weaponKey === 'ak47' ? buildProceduralAK() : buildWeaponMesh(weaponKey);
+  }
+}
+
+// Per-weapon viewmodel placement (camera-relative position + scale).
+//
+// The previous version used one hardcoded offset (0.35, -0.3, -0.6) for
+// every weapon. At a 75-degree FOV, that puts the near end of anything
+// wider than a pencil only ~0.35 units from the camera — do the math
+// (angular size = 2*atan(radius / distance)) and a 0.1-radius barrel at
+// that distance already subtends ~32 degrees, a third of the whole
+// horizontal field of view. That's the actual cause of guns rendering as
+// a huge, dark, undetailed mass: the camera was nearly inside the mesh.
+// Real .glb models are true 1-meter scale (an AWP is 1.15 m long) and are
+// additionally scaled down here, on top of being pushed back.
+const VIEWMODEL_TRANSFORMS = {
+  pistol: { position: [0.22, -0.19, -0.5], scale: 1.3 },
+  shotgun: { position: [0.26, -0.24, -0.95], scale: 1 },
+  chaingun: { position: [0.26, -0.26, -1.0], scale: 1 },
+  rocket: { position: [0.24, -0.22, -1.1], scale: 1 },
+  ak47: { position: [0.26, -0.22, -0.95], scale: 0.6 },
+  m4a1: { position: [0.26, -0.22, -0.95], scale: 0.6 },
+  mp5: { position: [0.26, -0.2, -0.75], scale: 0.7 },
+  awp: { position: [0.26, -0.2, -1.15], scale: 0.55 },
+};
+const DEFAULT_TRANSFORM = { position: [0.3, -0.25, -0.9], scale: 1 };
+
+// Async because a real .glb has to be fetched and parsed the first time a
+// weapon is equipped (cached after that — see loadGlbTemplate). Callers
+// don't need to await this if they don't want to block on it; the weapon
+// just pops in a frame or two after the fetch resolves.
+export async function createWeaponView(weaponKey) {
   const group = new THREE.Group();
-  group.position.set(0.35, -0.3, -0.6);
-  group.add(weaponKey === 'ak47' ? buildProceduralAK() : buildWeaponMesh(weaponKey));
   group.userData.weaponKey = weaponKey;
+
+  const model = GLB_PATHS[weaponKey] ? await buildGlbWeapon(weaponKey) : buildWeaponMesh(weaponKey);
+  group.add(model);
+
+  // Real skinned arm+hand (fingers, wrist, sleeve) instead of two boxes —
+  // see the module comment above buildArms for why these numbers are what
+  // they are. Falls back to the old box hands if the asset can't load.
+  const arms = (await buildArms(weaponKey)) || buildFallbackHands(weaponKey);
+  group.add(arms);
+
+  const transform = VIEWMODEL_TRANSFORMS[weaponKey] || DEFAULT_TRANSFORM;
+  group.position.set(...transform.position);
+  group.scale.setScalar(transform.scale);
+  // Read back by main.js's walk-bob/recoil animation, which offsets from
+  // this base rather than overwriting it with a hardcoded position.
+  group.userData.basePosition = transform.position;
+
   return group;
 }

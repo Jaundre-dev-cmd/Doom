@@ -10,14 +10,8 @@ import {
   SPRINT_MULTIPLIER,
   ACCELERATION,
   FRICTION,
-  JUMP_SPEED,
   GRAVITY,
-  JETPACK_ACCEL,
-  JETPACK_MAX_VY,
-  JETPACK_FUEL_MAX,
-  JETPACK_FUEL_DRAIN_PER_SEC,
-  JETPACK_FUEL_REGEN_PER_SEC,
-  STARTING_MONEY,
+  FLY_SPEED,
 } from './constants.js';
 
 export class LocalPlayer {
@@ -37,14 +31,10 @@ export class LocalPlayer {
     this.name = 'You';
     this.isMoving = false;
 
-    // Jetpack
-    this.jetpackFuel = JETPACK_FUEL_MAX;
-    this.isThrusting = false;
-
-    // Economy / loadout (tracked locally — see constants.js economy note)
-    this.money = STARTING_MONEY;
-    this.ownedWeapons = ['pistol'];
-    this.weaponUpgrades = {}; // weaponKey -> true once upgraded
+    // Free flight — unlimited, no fuel. Toggled on/off by a double-tap of
+    // Space or a single press of F (see main.js); while on, gravity is
+    // suspended entirely.
+    this.flying = false;
   }
 
   get eyeHeight() {
@@ -79,30 +69,37 @@ export class LocalPlayer {
 
     this.moveWithCollision(this.vx * dt, this.vz * dt, world);
 
-    // Jump (held Space keeps hopping on landing, COD-style).
-    if (input.jump && this.onGround) {
-      this.vy = JUMP_SPEED;
-      this.onGround = false;
+    // Ramps and upper floors register walkable surfaces with the world. Pick
+    // only a surface close enough to step onto from the player's current
+    // elevation, which prevents somebody on the ground floor from snapping
+    // through a ceiling to the floor above.
+    const floorY = world.getFloorHeight?.(this.x, this.z, this.y, this.onGround ? 0.55 : 0) ?? 0;
+    if (this.onGround) {
+      if (floorY >= this.y - 0.35 && floorY <= this.y + 0.55) {
+        this.y = floorY;
+        this.vy = 0;
+      } else if (floorY < this.y - 0.1) {
+        this.onGround = false;
+      }
     }
 
-    // Jetpack: thrust fights gravity while held and fuel remains; fuel
-    // regenerates whenever you're not thrusting.
-    this.isThrusting = !!input.jetpack && this.jetpackFuel > 0;
-    if (this.isThrusting) {
-      this.vy += JETPACK_ACCEL * dt;
-      this.jetpackFuel = Math.max(0, this.jetpackFuel - JETPACK_FUEL_DRAIN_PER_SEC * dt);
+    if (this.flying) {
+      // Unlimited free flight: no fuel, no cap. Holding Space climbs at a
+      // constant rate; releasing it just hovers in place (gravity stays
+      // suspended — you don't drift back down on your own). The only way
+      // down is to exit flight (double-tap Space, or press F), at which
+      // point the `else` branch below takes over and gravity resumes.
+      this.vy = input.spaceHeld ? FLY_SPEED : 0;
+      this.y += this.vy * dt;
       this.onGround = false;
     } else {
-      this.jetpackFuel = Math.min(JETPACK_FUEL_MAX, this.jetpackFuel + JETPACK_FUEL_REGEN_PER_SEC * dt);
-    }
-
-    this.vy -= GRAVITY * dt;
-    this.vy = Math.min(this.vy, JETPACK_MAX_VY);
-    this.y += this.vy * dt;
-    if (this.y <= 0) {
-      this.y = 0;
-      this.vy = 0;
-      this.onGround = true;
+      this.vy -= GRAVITY * dt;
+      this.y += this.vy * dt;
+      if (this.vy <= 0 && this.y <= floorY) {
+        this.y = floorY;
+        this.vy = 0;
+        this.onGround = true;
+      }
     }
   }
 
@@ -127,6 +124,11 @@ export class LocalPlayer {
 
   collides(x, z, r, world) {
     for (const obj of world.collidables) {
+      const playerMinY = this.y + 0.05;
+      const playerMaxY = this.y + PLAYER_EYE_HEIGHT;
+      const obstacleMinY = obj.minY ?? -Infinity;
+      const obstacleMaxY = obj.maxY ?? Infinity;
+      if (playerMaxY <= obstacleMinY || playerMinY >= obstacleMaxY) continue;
       const dx = x - obj.x;
       const dz = z - obj.z;
       const minDist = r + obj.radius;
@@ -136,7 +138,11 @@ export class LocalPlayer {
   }
 
   rotateYaw(deltaX, sensitivity) {
-    this.angle += deltaX * sensitivity;
+    // Moving the mouse/trackpad right should turn the view right. Given
+    // this game's yaw convention (forward = (-sin(angle), -cos(angle))),
+    // increasing `angle` turns the view left, so rightward input must
+    // *subtract* from it, not add.
+    this.angle -= deltaX * sensitivity;
   }
 
   rotatePitch(deltaY, sensitivity, maxPitch) {

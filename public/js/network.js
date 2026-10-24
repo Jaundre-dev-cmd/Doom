@@ -65,8 +65,17 @@ export class Network {
           case 'update':
             this.handlers.onUpdate?.(msg);
             break;
+          case 'pong':
+            this.handlers.onPong?.(msg);
+            break;
           case 'shoot':
             this.handlers.onShoot?.(msg);
+            break;
+          case 'rocket':
+            this.handlers.onRocket?.(msg);
+            break;
+          case 'explosion':
+            this.handlers.onExplosion?.(msg);
             break;
           case 'kill':
             this.handlers.onKill?.(msg);
@@ -105,12 +114,26 @@ export class Network {
     }
   }
 
-  sendUpdate(x, y, z, angle) {
-    this.send({ type: 'update', x, y, z, angle });
+  sendUpdate(x, y, z, angle, pitch, weapon) {
+    this.send({ type: 'update', x, y, z, angle, pitch, weapon });
   }
 
   sendShoot() {
     this.send({ type: 'shoot' });
+  }
+
+  // Lets other clients render your rocket's flight (purely cosmetic on
+  // their end — the real impact/damage is this client's own doing,
+  // reported separately via sendHit/sendZombieHit and sendExplosion).
+  sendRocket(x, y, z, dx, dy, dz) {
+    this.send({ type: 'rocket', x, y, z, dx, dy, dz });
+  }
+
+  // The authoritative point where a rocket you fired actually detonated,
+  // so every client's explosion VFX lands in the same place even if their
+  // own cosmetic copy of your rocket didn't travel the exact same path.
+  sendExplosion(x, y, z) {
+    this.send({ type: 'explosion', x, y, z });
   }
 
   sendHit(targetId, damage) {
