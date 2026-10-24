@@ -29,7 +29,10 @@ involved.
   real body proportions — not a single capsule) in their chosen skin and
   accent colors with optional headgear, a name tag that always faces the
   camera, and a visible jetpack flame while airborne.
-- **Controls**: WASD **or the arrow keys** both work for movement.
+- **Controls**: WASD **or the arrow keys** both work for movement. Press
+  `Q` to cycle between mines, bear traps, and laser traps, then `G` to
+  place one. Traps trigger server-side when an opponent or zombie gets
+  close; each player can have up to five active traps.
 - **Weapons**: Pistol, Shotgun (multi-pellet spread), Chaingun (hold to
   fire), Rocket Launcher, and a real **AK-47** — switch with `1`-`5` or
   the scroll wheel. Your lobby pick is free; the rest must be bought
@@ -63,6 +66,8 @@ involved.
 - **Multiplayer**: a small Node.js server relays player positions
   (including height, so jetpack flight is visible to others), shots,
   hits, kills and respawns between connected browsers over WebSockets.
+  Trap placement, proximity triggers, and trap damage are also handled by
+  the server so every connected player sees the same trap state.
 
 ## Zombies mode
 

@@ -570,6 +570,24 @@ html, body {
   color: #9a9aa2;
 }
 
+#trap-hud {
+  position: absolute;
+  top: 20px;
+  right: 190px;
+  padding: 8px 12px;
+  border: 1px solid rgba(230, 161, 0, 0.35);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #d5d7dc;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+#trap-type-value {
+  color: #f4bb43;
+  font-weight: 700;
+}
+
 #players-list {
   position: absolute;
   top: 20px;
@@ -844,4 +862,14 @@ html, body {
   letter-spacing: 1px;
   cursor: pointer;
   z-index: 14;
+}
+
+@media (max-width: 760px) {
+  #trap-hud {
+    top: auto;
+    right: 12px;
+    bottom: 118px;
+    max-width: calc(100vw - 24px);
+    white-space: normal;
+  }
 }

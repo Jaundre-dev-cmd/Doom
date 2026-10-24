@@ -92,6 +92,15 @@ export class Network {
           case 'zombieDeath':
             this.handlers.onZombieDeath?.(msg);
             break;
+          case 'trapPlaced':
+            this.handlers.onTrapPlaced?.(msg.trap);
+            break;
+          case 'trapRemoved':
+            this.handlers.onTrapRemoved?.(msg);
+            break;
+          case 'trapRejected':
+            this.handlers.onTrapRejected?.(msg);
+            break;
           default:
             break;
         }
@@ -119,5 +128,9 @@ export class Network {
 
   sendZombieHit(targetId, damage) {
     this.send({ type: 'zombieHit', targetId, damage });
+  }
+
+  sendPlaceTrap(trapType) {
+    this.send({ type: 'placeTrap', trapType });
   }
 }

@@ -4,6 +4,7 @@ import { LocalPlayer } from './localPlayer.js';
 import { buildWorld } from './world.js';
 import { createPlayerModel } from './playerModel.js';
 import { createWeaponView } from './weaponView.js';
+import { TrapManager } from './trapManager.js';
 import {
   WEAPONS,
   WEAPON_ORDER,
@@ -62,6 +63,8 @@ const zombieHudEl = document.getElementById('zombie-hud');
 const roundValueEl = document.getElementById('round-value');
 const zombiesRemainingValueEl = document.getElementById('zombies-remaining-value');
 const zombieKillsValueEl = document.getElementById('zombie-kills-value');
+const trapTypeValueEl = document.getElementById('trap-type-value');
+const trapCountValueEl = document.getElementById('trap-count-value');
 
 // --- Lobby selection state ----------------------------------------------
 let selectedWeapon = WEAPON_ORDER[0];
@@ -69,6 +72,8 @@ let selectedSkin = SKIN_ORDER[0];
 let selectedAccent = ACCENT_ORDER[0];
 let selectedHeadgear = HEADGEAR_ORDER[0];
 let selectedMap = MAP_ORDER[0];
+const TRAP_TYPES = ['MINE', 'BEAR_TRAP', 'LASER'];
+let selectedTrapIndex = 0;
 
 function hex(n) {
   return `#${n.toString(16).padStart(6, '0')}`;
@@ -171,6 +176,18 @@ window.addEventListener('keydown', (e) => {
   }
 
   const pointerLocked = renderer && document.pointerLockElement === renderer.domElement;
+
+  if (pointerLocked && !inventoryOpen && !e.repeat && e.code === 'KeyQ') {
+    selectedTrapIndex = (selectedTrapIndex + 1) % TRAP_TYPES.length;
+    updateTrapHud();
+    showBanner(`Trap selected: ${TRAP_TYPES[selectedTrapIndex].replace('_', ' ')}`, 1200);
+    return;
+  }
+
+  if (pointerLocked && !inventoryOpen && !e.repeat && e.code === 'KeyG') {
+    trapManager?.placeTrap(TRAP_TYPES[selectedTrapIndex]);
+    return;
+  }
 
   if (e.code === 'KeyE' && pointerLocked) {
     tryInteract();
@@ -456,6 +473,8 @@ let myId = null;
 let myWeaponView = null;
 let remotePlayers = {}; // id -> { data, model }
 let zombieEntities = {}; // id -> { data, model }
+let trapManager = null;
+let trapEffects = [];
 let currentMapMode = 'pvp'; // 'pvp' or 'zombies', set from the locked-in map
 let running = false;
 const raycaster = new THREE.Raycaster();
@@ -571,6 +590,69 @@ function updateZombiesHud() {
   zombieKillsValueEl.textContent = `Your kills: ${localPlayer.zombieKills}`;
 }
 
+function updateTrapHud() {
+  if (!trapTypeValueEl || !trapCountValueEl) return;
+  trapTypeValueEl.textContent = TRAP_TYPES[selectedTrapIndex].replace('_', ' ');
+  trapCountValueEl.textContent = trapManager?.getOwnedTrapCount() || 0;
+}
+
+function addTrap(trap) {
+  trapManager?.addTrap(trap);
+  updateTrapHud();
+}
+
+function removeTrap(msg) {
+  const trap = trapManager?.removeTrap(msg.trapId);
+  if (!trap) return;
+  updateTrapHud();
+  if (msg.position) spawnTrapEffect(msg.position, msg.trapType || trap.userData.type);
+  if (msg.victimId === myId) {
+    showBanner(`You triggered a ${String(msg.trapType || trap.userData.type).replace('_', ' ')}!`);
+  }
+}
+
+function spawnTrapEffect(position, trapType) {
+  if (!scene) return;
+  const colors = { MINE: 0xff5a24, BEAR_TRAP: 0xffc247, LASER: 0xff3048 };
+  const color = colors[trapType] || 0xff5a24;
+  const material = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.85,
+    depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 8), material);
+  mesh.position.set(position.x, (position.y || 0) + 0.35, position.z);
+  scene.add(mesh);
+  trapEffects.push({ mesh, elapsed: 0, duration: 0.35 });
+}
+
+function updateTrapEffects(dt) {
+  for (let i = trapEffects.length - 1; i >= 0; i--) {
+    const effect = trapEffects[i];
+    effect.elapsed += dt;
+    const progress = Math.min(1, effect.elapsed / effect.duration);
+    effect.mesh.scale.setScalar(1 + progress * 5);
+    effect.mesh.material.opacity = 0.85 * (1 - progress);
+
+    if (progress >= 1) {
+      scene?.remove(effect.mesh);
+      effect.mesh.geometry.dispose();
+      effect.mesh.material.dispose();
+      trapEffects.splice(i, 1);
+    }
+  }
+}
+
+function clearTrapEffects() {
+  for (const effect of trapEffects) {
+    scene?.remove(effect.mesh);
+    effect.mesh.geometry.dispose();
+    effect.mesh.material.dispose();
+  }
+  trapEffects = [];
+}
+
 // --- HUD / scoreboard ---------------------------------------------------
 function updateScoreboard() {
   const all = [{ name: localPlayer.name, health: localPlayer.health, score: localPlayer.score, you: true }];
@@ -658,6 +740,10 @@ function startMatch(msg, name) {
   }
 
   zombieEntities = {};
+  selectedTrapIndex = 0;
+  trapManager = new TrapManager(scene, network, myId);
+  for (const trap of msg.traps || []) addTrap(trap);
+  updateTrapHud();
   localPlayer.zombieKills = 0;
   if (currentMapMode === 'zombies') {
     for (const z of msg.zombies || []) addZombie(z);
@@ -699,6 +785,9 @@ function endMatch() {
 
   for (const id of Object.keys(remotePlayers)) removeRemotePlayer(Number(id));
   for (const id of Object.keys(zombieEntities)) removeZombie(id);
+  trapManager?.dispose();
+  trapManager = null;
+  clearTrapEffects();
   if (renderer) {
     renderer.dispose();
     gameContainer.innerHTML = '';
@@ -825,6 +914,9 @@ lobbyForm.addEventListener('submit', async (e) => {
       }
       updateZombiesHud();
     },
+    onTrapPlaced: (trap) => addTrap(trap),
+    onTrapRemoved: (msg) => removeTrap(msg),
+    onTrapRejected: () => showBanner('Trap placement unavailable.', 1500),
     onDisconnect: () => {
       statusEl.textContent = 'Disconnected from server.';
       endMatch();
@@ -897,6 +989,7 @@ function loop(now) {
   for (const z of Object.values(zombieEntities)) {
     z.model.animate(dt, z.moving);
   }
+  updateTrapEffects(dt);
 
   if (!inventoryOpen && now - lastNetworkSend > NETWORK_SEND_INTERVAL_MS) {
     network.sendUpdate(localPlayer.x, localPlayer.y, localPlayer.z, localPlayer.angle);
