@@ -46,6 +46,14 @@ const HEADGEAR_IDS = ['none', 'helmet', 'cap'];
 const MAP_IDS = ['forest', 'techbase', 'zombies'];
 const MAP_MODES = { forest: 'pvp', techbase: 'pvp', zombies: 'zombies' };
 const DEFAULT_MAP = 'forest';
+const TRAP_TYPES = {
+  MINE: { damage: 60, radius: 2.5 },
+  BEAR_TRAP: { damage: 35, radius: 1.5 },
+  LASER: { damage: 45, radius: 2 },
+};
+const MAX_TRAPS_PER_PLAYER = 5;
+const TRAP_PLACE_COOLDOWN_MS = 1000;
+const TRAP_WORLD_BOUND = 118;
 
 // Zombies mode tuning — keep in sync with public/js/constants.js.
 const ZOMBIE_SPAWN_POINTS = [
@@ -134,7 +142,9 @@ const SPAWN_POINTS = [
 ];
 
 const players = new Map(); // id -> player state
+const activeTraps = new Map(); // id -> server-owned trap state
 let nextId = 1;
+let nextTrapId = 1;
 let spawnIndex = 0;
 let activeMap = null; // locked in by the first player to join
 
@@ -153,6 +163,89 @@ function nextSpawn() {
 
 function playerList() {
   return Array.from(players.values());
+}
+
+function removeTrap(trap, details = {}) {
+  if (!activeTraps.delete(trap.id)) return;
+  broadcast({ type: 'trapRemoved', trapId: trap.id, ...details });
+}
+
+function triggerTrap(trap, victim, victimType) {
+  const trapSettings = TRAP_TYPES[trap.trapType];
+  if (!trapSettings || !activeTraps.has(trap.id)) return;
+
+  removeTrap(trap, {
+    victimId: victim.id,
+    victimType,
+    trapType: trap.trapType,
+    position: trap.position,
+  });
+
+  if (victimType === 'player') {
+    damagePlayer(victim, trapSettings.damage, trap.ownerId);
+    return;
+  }
+
+  victim.health = Math.max(0, victim.health - trapSettings.damage);
+  broadcast({ type: 'zombieHealth', id: victim.id, health: victim.health });
+  if (victim.health === 0) {
+    zombies.delete(victim.id);
+    broadcast({ type: 'zombieDeath', id: victim.id, killerId: trap.ownerId });
+    maybeStartNextRound();
+  }
+}
+
+function checkPlayerTraps(player) {
+  if (player.health <= 0) return;
+
+  for (const trap of activeTraps.values()) {
+    if (trap.ownerId === player.id) continue;
+    const { radius } = TRAP_TYPES[trap.trapType];
+    if (Math.hypot(player.x - trap.position.x, player.z - trap.position.z) <= radius) {
+      triggerTrap(trap, player, 'player');
+      break;
+    }
+  }
+}
+
+function checkZombieTraps() {
+  if (MAP_MODES[activeMap] !== 'zombies') return;
+
+  for (const trap of activeTraps.values()) {
+    const { radius } = TRAP_TYPES[trap.trapType];
+    for (const zombie of zombies.values()) {
+      if (Math.hypot(zombie.x - trap.position.x, zombie.z - trap.position.z) <= radius) {
+        triggerTrap(trap, zombie, 'zombie');
+        break;
+      }
+    }
+  }
+}
+
+function placeTrap(player, trapType) {
+  if (!Object.prototype.hasOwnProperty.call(TRAP_TYPES, trapType) || player.health <= 0) return false;
+  if (!Number.isFinite(player.x) || !Number.isFinite(player.z)) return false;
+  if (Math.abs(player.x) > TRAP_WORLD_BOUND || Math.abs(player.z) > TRAP_WORLD_BOUND) return false;
+  if (Date.now() - player.lastTrapPlaced < TRAP_PLACE_COOLDOWN_MS) return false;
+
+  const ownedTraps = Array.from(activeTraps.values()).filter((trap) => trap.ownerId === player.id);
+  if (ownedTraps.length >= MAX_TRAPS_PER_PLAYER) {
+    const oldestTrap = ownedTraps.sort((a, b) => a.createdAt - b.createdAt)[0];
+    removeTrap(oldestTrap);
+  }
+
+  const trap = {
+    id: `trap_${nextTrapId++}`,
+    ownerId: player.id,
+    trapType,
+    position: { x: player.x, y: 0, z: player.z },
+    createdAt: Date.now(),
+  };
+  player.lastTrapPlaced = trap.createdAt;
+  activeTraps.set(trap.id, trap);
+  const { createdAt, ...publicTrap } = trap;
+  broadcast({ type: 'trapPlaced', trap: publicTrap });
+  return true;
 }
 
 // Shared by player-vs-player hits and zombie melee attacks. `killerId` is
@@ -210,6 +303,9 @@ function maybeStartNextRound() {
 }
 
 function zombieTick() {
+  if (zombies.size === 0) return;
+
+  checkZombieTraps();
   if (zombies.size === 0) return;
 
   const dt = ZOMBIE_TICK_MS / 1000;
@@ -317,6 +413,7 @@ wss.on('connection', (ws) => {
         angle: 0,
         health: 100,
         score: 0,
+        lastTrapPlaced: 0,
       };
 
       players.set(id, player);
@@ -333,13 +430,14 @@ wss.on('connection', (ws) => {
           map: activeMap,
           zombies: Array.from(zombies.values()),
           zombieRound,
+          traps: Array.from(activeTraps.values(), ({ createdAt, ...trap }) => trap),
         })
       );
       broadcast({ type: 'join', player }, ws);
 
       console.log(`[+] ${player.name} connected (id ${id}, map ${activeMap}). Total players: ${players.size}`);
       return;
-    }
+    };
 
     const p = players.get(ws.playerId);
     if (!p) return;
@@ -352,6 +450,14 @@ wss.on('connection', (ws) => {
           p.angle = msg.angle;
           if (typeof msg.y === 'number') p.y = msg.y; // jetpack height, optional for older clients
           broadcast({ type: 'update', id: p.id, x: p.x, y: p.y, z: p.z, angle: p.angle }, ws);
+          if (MAP_MODES[activeMap] !== 'zombies') checkPlayerTraps(p);
+        }
+        break;
+      }
+
+      case 'placeTrap': {
+        if (!placeTrap(p, msg.trapType)) {
+          ws.send(JSON.stringify({ type: 'trapRejected', reason: 'Trap placement unavailable.' }));
         }
         break;
       }
@@ -398,7 +504,12 @@ wss.on('connection', (ws) => {
       if (players.size === 0) {
         activeMap = null; // next match's first joiner picks fresh
         stopZombieMode();
+        activeTraps.clear();
         console.log('  All players left — map will be re-selected by the next joiner.');
+      } else {
+        for (const trap of activeTraps.values()) {
+          if (trap.ownerId === ws.playerId) removeTrap(trap);
+        }
       }
     }
   });

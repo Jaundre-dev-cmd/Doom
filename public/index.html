@@ -22,18 +22,15 @@
   <!-- Lobby: connect, loadout (weapon + skin), map select, deploy -->
   <div id="lobby">
     <div class="lobby-card">
-      <h1>DOOM<span>CLONE</span></h1>
-      <p class="subtitle">3D multiplayer shooter — set your loadout, pick a map, deploy.</p>
-
       <div class="server-info">
         <div>This server's address(es):</div>
         <div><span class="ip-highlight">ws://localhost:3000</span> (same machine only)</div>
-        <div><span class="ip-highlight">ws://192.168.1.10:3000</span> — Wi‑Fi, use this for a friend on the same network</div>
+        <div><span class="ip-highlight">ws://192.168.68.52:3000</span> — Wi‑Fi, use this for a friend on your Wi‑Fi</div>
         <div><span class="ip-highlight">ws://172.18.64.1:3000</span> — vEthernet (WSL), likely not reachable by a friend</div>
       </div>
 
       <form id="lobby-form">
-        <div class="lobby-row">
+        <div class="hidden lobby-row">
           <div class="lobby-field">
             <label for="player-name">Callsign</label>
             <input id="player-name" type="text" maxlength="16" placeholder="Player" autocomplete="off" />
@@ -43,63 +40,80 @@
             <input id="server-address" type="text" placeholder="ws://192.168.1.10:3000" autocomplete="off" />
           </div>
         </div>
-
-        <div id="connection-info" class="help">Detecting this machine's address...</div>
-
-        <section class="lobby-section">
-          <h2>Weapon</h2>
-          <div id="weapon-cards" class="card-row"></div>
-        </section>
+        <div id="connection-info" class="hidden">Detecting this machine's address...</div>
 
         <section class="lobby-section">
-          <h2>Skin</h2>
-          <div id="skin-swatches" class="swatch-row"></div>
+          <h2>WEAPON</h2>
+          <div id="weapon-cards" class="card-row weapon-row"></div>
         </section>
 
-        <section class="lobby-section">
-          <h2>Accent</h2>
-          <div id="accent-swatches" class="swatch-row"></div>
-        </section>
+        <div id="skin-swatches" class="hidden"></div>
+        <div id="headgear-cards" class="hidden"></div>
 
-        <section class="lobby-section">
-          <h2>Headgear</h2>
-          <div id="headgear-cards" class="card-row"></div>
-        </section>
-
-        <section class="lobby-section">
-          <h2>Map</h2>
-          <div id="map-cards" class="card-row map-row"></div>
-          <p class="help small">The match's map is set by whichever player deploys first; joining later follows whatever is already locked in.</p>
-        </section>
-
-        <div class="deploy-section">
-          <div class="signal-bar-box" aria-label="Connection signal">
-            <div class="signal-bar active" style="height: 10px;"></div>
-            <div class="signal-bar active" style="height: 16px;"></div>
-            <div class="signal-bar active" style="height: 22px;"></div>
-            <div class="signal-bar active" style="height: 28px;"></div>
-            <div class="signal-bar" style="height: 34px;"></div>
+        <section class="lobby-section accent-section">
+          <div class="section-header-row">
+            <h2>ACCENT</h2>
+            <h2>Accent Decal Style</h2>
           </div>
-          <button id="deploy-button" class="deploy-btn" type="submit">Deploy</button>
-          <button class="settings-btn" type="button" aria-label="Settings">⚙</button>
+          <div class="accent-row">
+            <div id="accent-swatches" class="swatch-row"></div>
+            <div class="decal-grid" aria-label="Accent decal choices">
+              <button type="button" class="decal-btn active" title="Stripes">▨</button>
+              <button type="button" class="decal-btn" title="Splatter">☸</button>
+              <button type="button" class="decal-btn" title="Logo">☠</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="lobby-section armor-section">
+          <div class="option-grid">
+            <div class="option-column"><div class="option-label">ARMOR</div><div class="mini-option-card">Bare Head</div></div>
+            <div class="option-column"><div class="option-label">HEAD</div><div class="mini-option-card active">Helmet</div></div>
+            <div class="option-column"><div class="option-label">TORSO</div><div class="mini-option-card">Tactical Goggles</div></div>
+            <div class="option-column"><div class="option-label">TORSO</div><div class="mini-option-card">Combat Mask</div></div>
+            <div class="option-column"><div class="option-label">LEGS</div><div class="mini-option-card">Powered Visor</div></div>
+          </div>
+        </section>
+
+        <section class="lobby-section map-section">
+          <div class="section-header-row map-header-row">
+            <h2>MAP</h2>
+            <div class="preset-toolbar">
+              <span>LOADOUT PRESETS</span>
+              <button type="button" class="preset-btn active">Preset A</button>
+              <button type="button" class="preset-btn">B</button>
+              <button type="button" class="preset-btn">C</button>
+              <button type="button" class="preset-btn gear-btn">⚙</button>
+            </div>
+          </div>
+          <div id="map-cards" class="card-row map-row"></div>
+        </section>
+
+        <div class="deploy-panel">
+          <div class="signal-box" aria-label="Connection signal">
+            <span class="signal-bar active" style="height: 10px"></span>
+            <span class="signal-bar active" style="height: 16px"></span>
+            <span class="signal-bar active" style="height: 22px"></span>
+            <span class="signal-bar active" style="height: 28px"></span>
+            <span class="signal-bar" style="height: 34px"></span>
+          </div>
+          <button id="deploy-button" class="deploy-btn" type="submit">DEPLOY</button>
+          <div class="move-pad" aria-label="Movement pad">
+            <span class="pad-key">N</span>
+            <div class="pad-row">
+              <span class="pad-key">W</span>
+              <span class="pad-key">↑</span>
+              <span class="pad-key">E</span>
+            </div>
+            <div class="pad-row center-row">
+              <span class="pad-key">S</span>
+              <span class="pad-key">↓</span>
+            </div>
+          </div>
         </div>
 
-        <p id="lobby-status" class="status"></p>
+        <p id="lobby-status" class="status">Disconnected from server.</p>
       </form>
-
-      <div class="help">
-        <strong>Hosting?</strong> Run <code>npm start</code>, then share one of the
-        addresses above with your friend.<br />
-        <strong>Joining?</strong> Ask your host for <em>their</em> real address.<br />
-        See <code>README.md</code> for full setup and port-forwarding steps.
-      </div>
-
-      <div class="controls">
-        <strong>Controls:</strong> WASD move · Space jump · Shift sprint ·
-        F jetpack · E use buy station/upgrade bench · Tab inventory ·
-        Mouse look (click game to lock pointer) · Left click to shoot
-        (hold for the Chaingun) · 1-4 or scroll to switch weapons
-      </div>
     </div>
   </div>
 
@@ -109,6 +123,7 @@
     <div id="money-box">💰 $<span id="money-value">500</span></div>
     <div id="weapon-box">🔫 <span id="weapon-name">Pistol</span></div>
     <div id="secrets-box">🔎 Secrets: <span id="secrets-value">0</span></div>
+    <div id="trap-hud">Q: Change trap · G: Place <span id="trap-type-value">MINE</span> (<span id="trap-count-value">0</span>/5)</div>
     <ol id="players-list"></ol>
     <div id="fuel-bar-container">
       <div id="fuel-bar-label">JETPACK</div>
