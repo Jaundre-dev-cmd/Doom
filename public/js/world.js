@@ -1532,16 +1532,6 @@ function createVillageNPCs(scene) {
   };
 }
 
-// Helper to quickly build boxes with relative group transforms
-function addBox(group, geom, mat, x, y, z) {
-  const mesh = new THREE.Mesh(geom, mat);
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  group.add(mesh);
-  return mesh;
-}
-
 function makeCentralFactory(x, z, collidables, walkableSurfaces, isOutbreak, isForest, nameOverride = '') {
   const group = new THREE.Group();
   group.position.set(x, 0, z);

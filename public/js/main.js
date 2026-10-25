@@ -143,21 +143,127 @@ let selectedSkin = SKIN_ORDER[0];
 let selectedAccent = ACCENT_ORDER[0];
 let selectedHeadgear = HEADGEAR_ORDER[0];
 let selectedMap = MAP_ORDER[0];
+let lobbyPreviewRenderer = null;
+let lobbyPreviewScene = null;
+let lobbyPreviewCamera = null;
+let lobbyPreviewModel = null;
+let lobbyPreviewLastFrame = 0;
+
+function updateLobbyCharacterPreview() {
+  const stage = document.getElementById('operator-preview-stage');
+  const loadoutEl = document.getElementById('operator-preview-loadout');
+  if (!stage || !loadoutEl) return;
+
+  const skin = SKINS.find((item) => item.id === selectedSkin);
+  const accent = ACCENTS.find((item) => item.id === selectedAccent);
+  const headgear = HEADGEAR.find((item) => item.id === selectedHeadgear);
+  const weapon = WEAPONS[selectedWeapon];
+  if (!skin || !accent || !headgear || !weapon) {
+    throw new Error('Unable to render the selected operator loadout.');
+  }
+
+  if (!lobbyPreviewRenderer) {
+    try {
+      lobbyPreviewScene = new THREE.Scene();
+      lobbyPreviewCamera = new THREE.PerspectiveCamera(34, 1, 0.1, 30);
+      lobbyPreviewCamera.position.set(1.6, 1.8, -4.1);
+      lobbyPreviewCamera.lookAt(0, 1, 0);
+
+      lobbyPreviewRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      lobbyPreviewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      lobbyPreviewRenderer.outputColorSpace = THREE.SRGBColorSpace;
+      lobbyPreviewRenderer.domElement.setAttribute('aria-label', '3D preview of the selected operator');
+      stage.replaceChildren(lobbyPreviewRenderer.domElement);
+
+      lobbyPreviewScene.add(new THREE.HemisphereLight(0xe7edf4, 0x282a2c, 2.1));
+      const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
+      keyLight.position.set(-3, 5, -4);
+      lobbyPreviewScene.add(keyLight);
+      const rimLight = new THREE.DirectionalLight(0xe5bd64, 1.2);
+      rimLight.position.set(3, 2, 3);
+      lobbyPreviewScene.add(rimLight);
+
+      const platform = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.62, 0.68, 0.12, 32),
+        new THREE.MeshStandardMaterial({ color: 0x343536, metalness: 0.55, roughness: 0.55 })
+      );
+      platform.position.y = -0.08;
+      lobbyPreviewScene.add(platform);
+
+      const resizePreview = () => {
+        if (!lobbyPreviewRenderer || !lobbyPreviewCamera) return;
+        const { width, height } = stage.getBoundingClientRect();
+        if (width <= 0 || height <= 0) return;
+        lobbyPreviewRenderer.setSize(width, height, false);
+        lobbyPreviewCamera.aspect = width / height;
+        lobbyPreviewCamera.updateProjectionMatrix();
+      };
+      new ResizeObserver(resizePreview).observe(stage);
+      resizePreview();
+
+      lobbyPreviewRenderer.setAnimationLoop((time) => {
+        if (!lobbyPreviewScene || lobby.classList.contains('hidden')) return;
+        const delta = lobbyPreviewLastFrame ? Math.min((time - lobbyPreviewLastFrame) / 1000, 0.05) : 0;
+        lobbyPreviewLastFrame = time;
+        if (lobbyPreviewModel) {
+          lobbyPreviewModel.group.rotation.y = Math.sin(time / 1800) * 0.16;
+          lobbyPreviewModel.animate(delta, false);
+        }
+        lobbyPreviewRenderer.render(lobbyPreviewScene, lobbyPreviewCamera);
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      stage.textContent = `Character preview unavailable: ${detail}`;
+      stage.classList.add('preview-error');
+      console.error('Failed to initialize the lobby character preview:', error);
+      return;
+    }
+  }
+
+  if (lobbyPreviewModel) {
+    lobbyPreviewScene.remove(lobbyPreviewModel.group);
+    lobbyPreviewModel.dispose();
+  }
+  lobbyPreviewModel = createPlayerModel(skin.color, '', { accentColor: accent.color, headgear: selectedHeadgear });
+  const nameTag = lobbyPreviewModel.group.children.find((child) => child.isSprite);
+  if (nameTag) nameTag.visible = false;
+  lobbyPreviewScene.add(lobbyPreviewModel.group);
+  loadoutEl.textContent = `${weapon.name} · ${headgear.name}`;
+}
 
 function hex(n) {
   return `#${n.toString(16).padStart(6, '0')}`;
 }
 
 function buildLobbyCards() {
+  const weaponIcons = {
+    pistol: '🔫',
+    shotgun: '💥',
+    chaingun: '⚙',
+    rocket: '🚀',
+    ak47: '🔫',
+    m4a1: '🎯',
+    mp5: '🔫',
+    awp: '🔭',
+  };
+
   weaponCardsEl.innerHTML = '';
   for (const key of WEAPON_ORDER) {
     const card = document.createElement('button');
     card.type = 'button';
-    card.className = 'card' + (key === selectedWeapon ? ' selected' : '');
-    card.textContent = WEAPONS[key].name;
+    card.className = 'card weapon-card' + (key === selectedWeapon ? ' selected' : '');
+    const icon = document.createElement('span');
+    icon.className = 'weapon-card-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = weaponIcons[key] || '▰';
+    const label = document.createElement('span');
+    label.className = 'weapon-card-label';
+    label.textContent = WEAPONS[key].name;
+    card.append(icon, label);
     card.addEventListener('click', () => {
       selectedWeapon = key;
       buildLobbyCards();
+      updateLobbyCharacterPreview();
     });
     weaponCardsEl.appendChild(card);
   }
@@ -173,6 +279,7 @@ function buildLobbyCards() {
     sw.addEventListener('click', () => {
       selectedSkin = skin.id;
       buildLobbyCards();
+      updateLobbyCharacterPreview();
     });
     skinSwatchesEl.appendChild(sw);
   }
@@ -187,6 +294,7 @@ function buildLobbyCards() {
     sw.addEventListener('click', () => {
       selectedAccent = accent.id;
       buildLobbyCards();
+      updateLobbyCharacterPreview();
     });
     accentSwatchesEl.appendChild(sw);
   }
@@ -200,6 +308,7 @@ function buildLobbyCards() {
     card.addEventListener('click', () => {
       selectedHeadgear = gear.id;
       buildLobbyCards();
+      updateLobbyCharacterPreview();
     });
     headgearCardsEl.appendChild(card);
   }
@@ -209,9 +318,14 @@ function buildLobbyCards() {
     const m = MAPS[key];
     const card = document.createElement('button');
     card.type = 'button';
-    card.className = 'card map-card' + (key === selectedMap ? ' selected' : '');
-    card.style.background = `linear-gradient(135deg, ${hex(m.sky)}, ${hex(m.groundColor)})`;
-    card.innerHTML = `${m.name}<span>${m.description}</span>`;
+    card.className = `card map-card map-${key}` + (key === selectedMap ? ' selected' : '');
+    const title = document.createElement('span');
+    title.className = 'map-card-title';
+    title.textContent = m.name;
+    const description = document.createElement('span');
+    description.className = 'map-card-description';
+    description.textContent = m.description;
+    card.append(title, description);
     card.addEventListener('click', () => {
       selectedMap = key;
       buildLobbyCards();
@@ -2588,6 +2702,7 @@ if (!serverInput.value) {
 
 // Always build cards outside of storage try-catch so failures in storage do not block rendering!
 buildLobbyCards();
+updateLobbyCharacterPreview();
 
 (async function showConnectionInfo() {
   try {

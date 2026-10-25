@@ -200,12 +200,16 @@ export function createPlayerModel(skinColor, name, options = {}) {
       rightLegPivot.rotation.x = swing;
     },
     dispose() {
-      torso.geometry.dispose();
-      head.geometry.dispose();
-      if (gun) gun.geometry.dispose();
-      flame.geometry.dispose();
-      hitbox.geometry.dispose();
-      nameSprite.userData.texture.dispose();
+      group.traverse((object) => {
+        if (object.geometry) object.geometry.dispose();
+        if (object.material) {
+          const materials = Array.isArray(object.material) ? object.material : [object.material];
+          for (const material of materials) {
+            material.map?.dispose();
+            material.dispose();
+          }
+        }
+      });
     },
   };
 }

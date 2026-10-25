@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DOOM Clone — 3D</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <!-- Three.js loaded from a CDN as an ES module — no build step, no
+       bundler, no assets to download/license. Pinned version for
+       reproducibility. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <div id="lobby">
+    <main class="lobby-shell">
+      <form id="lobby-form" class="home-form">
+        <header class="home-server-panel">
+          <div class="home-server-addresses">
+            <div id="connection-info" class="connection-banner">Detecting this server's addresses...</div>
+          </div>
+          <div class="home-connection">
+            <label for="server-address">SERVER CONNECTION</label>
+            <input id="server-address" type="text" placeholder="ws://192.168.1.10:3000" autocomplete="off" />
+            <div class="home-callsign">
+              <label for="player-name">CALLSIGN</label>
+              <input id="player-name" type="text" maxlength="16" placeholder="Player" autocomplete="off" />
+            </div>
+          </div>
+          <aside class="operator-preview">
+            <span class="operator-preview-heading">OPERATOR PREVIEW</span>
+            <div id="operator-preview-stage" class="operator-preview-stage">
+              <span class="operator-preview-loading">Loading preview...</span>
+            </div>
+            <span id="operator-preview-loadout" class="operator-preview-loadout" aria-live="polite"></span>
+          </aside>
+        </header>
+
+        <section class="home-section weapon-section">
+          <h2>WEAPON</h2>
+          <div id="weapon-cards" class="card-row weapon-grid"></div>
+        </section>
+
+        <section class="home-section accent-section">
+          <div class="section-heading-split">
+            <h2>ACCENT</h2>
+            <span class="decal-heading">ACCENT DECAL STYLE</span>
+          </div>
+          <div class="accent-customization">
+            <div class="armor-skin-control">
+              <span class="skin-label">ARMOR COLOR</span>
+              <div id="skin-swatches" class="swatch-row" aria-label="Armor color"></div>
+            </div>
+            <div class="accent-control">
+              <div id="accent-swatches" class="swatch-row" aria-label="Accent color"></div>
+              <div class="decal-options" aria-label="Decorative decal styles">
+                <span title="Stripes">▨</span>
+                <span title="Splatter">✺</span>
+                <span title="Logo">☠</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="home-section armor-section">
+          <div class="section-heading-split">
+            <h2>ARMOR & HEADGEAR</h2>
+            <span class="section-kicker">OPERATOR KIT</span>
+          </div>
+          <div id="headgear-cards" class="card-row headgear-row"></div>
+        </section>
+
+        <section class="home-section map-section">
+          <div class="section-heading-split map-heading">
+            <h2>MAP</h2>
+            <div class="preset-display"><span>LOADOUT PRESETS</span><b>PRESET A</b><b>B</b><b>C</b><b class="preset-gear">⚙</b></div>
+          </div>
+          <div id="map-cards" class="card-row map-row"></div>
+          <p class="map-note">The match's map is set by whichever player deploys first; joining later follows the active map.</p>
+        </section>
+
+        <footer class="home-footer">
+          <div class="connection-strength">
+            <span>CONNECTION</span>
+            <div class="signal-bars" aria-label="Connection signal">
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+          </div>
+          <button id="deploy-button" type="submit">DEPLOY</button>
+          <div class="movement-pad" aria-label="Movement uses WASD or arrow keys">
+            <span class="north">N</span><span class="west">W</span><b>✥</b><span class="east">E</span><span class="south">S</span>
+          </div>
+        </footer>
+        <p id="lobby-status" class="status">Disconnected from server.</p>
+      </form>
+    </main>
+  </div>
+
+  <!-- HUD: squad, compass, radar, vitals, weapon, and the flying status badge stay on screen for the whole match -->
+  <div id="hud" class="hidden">
+    <!-- Kill Cam overlay -->
+    <div id="killcam-overlay" class="hidden">
+      <div class="killcam-header">
+        <span class="rec-dot">●</span> REC
+      </div>
+      <div class="killcam-title" id="killcam-title">KILL CAM - SPECTATING PLAYER</div>
+      <div class="killcam-bar-container">
+        <div id="killcam-bar" class="killcam-bar"></div>
+      </div>
+      <div class="killcam-vhs-info">
+        <div>TIME: <span id="killcam-time">00:00:00</span></div>
+        <div>PLAYBACK: LIVE_PLAYBACK</div>
+        <div>TRACKING: AUTOLOCK</div>
+      </div>
+    </div>
+
+    <div id="scoreboard-panel" class="hud-frame">
+      <div class="squad-head">
+        <span class="squad-title">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M5.2 7.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4zm5.6.6a1.9 1.9 0 1 0 0-3.8 1.9 1.9 0 0 0 0 3.8zM1.4 13.2c.3-2 1.9-3.2 3.8-3.2s3.5 1.2 3.8 3.2v.6H1.4v-.6zm6.2-.1c-.2-1.4-1-2.5-2.1-3 1.2-.3 2.6.1 3.4 1.3.6 1 .8 2 .8 2.6v.2H7.6v-1.1z"/></svg>
+          SQUAD
+        </span>
+        <span id="squad-count">1/4</span>
+      </div>
+      <ol id="players-list"></ol>
+    </div>
+
+    <div id="compass">
+      <div class="compass-notch"></div>
+      <div class="compass-window">
+        <div id="compass-strip"></div>
+      </div>
+    </div>
+
+    <div id="radar-panel" class="hud-frame">
+      <div class="radar-head">
+        <span>RADAR</span>
+        <span class="ping">
+          <span id="ping-bars" class="ping-bars" data-bars="4"><i></i><i></i><i></i><i></i></span>
+          <span id="ping-value">--</span>
+        </span>
+      </div>
+      <div class="radar-body">
+        <canvas id="minimap" width="176" height="176"></canvas>
+        <span class="radar-range">100m</span>
+        <span class="radar-more" aria-hidden="true">···</span>
+      </div>
+    </div>
+
+    <div id="vitals-panel" class="hud-frame">
+      <div class="vital-row">
+        <span class="vital-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16"><path fill="currentColor" d="M8 14s-5.2-3.3-5.2-7A2.9 2.9 0 0 1 8 5.1 2.9 2.9 0 0 1 13.2 7C13.2 10.7 8 14 8 14z"/></svg>
+        </span>
+        <span class="vital-label">HEALTH</span>
+        <div class="vital-bar-track"><div id="health-bar-fill" class="vital-bar-fill"></div></div>
+        <span id="health-value" class="vital-value">100</span>
+      </div>
+      <div class="vital-row">
+        <span class="vital-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M10.2 10.2 13.4 13.4"/></svg>
+        </span>
+        <span class="vital-label">SECRETS</span>
+        <span></span>
+        <span id="secrets-value" class="vital-value">0</span>
+      </div>
+    </div>
+
+    <div id="weapon-panel" class="hud-frame">
+      <div id="weapon-icon" aria-hidden="true"></div>
+      <div class="weapon-readout">
+        <div id="weapon-name">PISTOL</div>
+        <div class="ammo"><span id="ammo-mag">12</span><span class="ammo-sep">|</span><span id="ammo-reserve">36</span></div>
+      </div>
+      <div class="weapon-utils">
+        <div class="util">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="9" r="4.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path stroke="currentColor" stroke-width="1.3" stroke-linecap="round" d="M8 4.8V2.4M6.2 3.2h3.6"/></svg>
+          <span>G</span>
+        </div>
+        <div class="util">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="4" width="10" height="8" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path stroke="currentColor" stroke-width="1.3" d="M8 4v8M3 8h10"/></svg>
+          <span>F</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="flying-indicator" class="hidden">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.2 1 4 9.2h3.1L6.4 15 12 6.6H8.8z"/></svg>
+      FLYING
+    </div>
+
+    <div id="zombie-hud" class="hidden hud-frame">
+      <div id="round-value">SURVIVAL ACTIVE</div>
+      <div id="zombies-remaining-value">Zombies: 0</div>
+      <div id="zombie-kills-value">Your kills: 0</div>
+    </div>
+  </div>
+
+  <!-- Inventory overlay (Tab) — every weapon is already unlocked; this is a quick-switch list -->
+  <div id="inventory-overlay" class="hidden">
+    <div class="inventory-card">
+      <div class="inventory-header">
+        <h2>LOADOUT</h2>
+        <button id="inventory-close" type="button" aria-label="Close inventory">✕</button>
+      </div>
+      <ul id="inventory-list"></ul>
+      <p class="help small">Click a weapon to equip it, or press Tab to close.</p>
+    </div>
+  </div>
+
+  <!-- Help & Controls overlay (i) -->
+  <div id="help-overlay" class="hidden">
+    <div class="help-card">
+      <div class="help-header">
+        <h2>CONTROLS & HELP</h2>
+        <button id="help-close" type="button" aria-label="Close help">✕</button>
+      </div>
+      
+      <div class="help-section">
+        <h3>MOVEMENT & FLIGHT</h3>
+        <div class="help-row"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or <kbd>▲</kbd> <kbd>◀</kbd> <kbd>▼</kbd> <kbd>▶</kbd> <span>Move around</span></div>
+        <div class="help-row"><kbd>Shift</kbd> <span>Sprint (faster movement)</span></div>
+        <div class="help-row"><kbd>Space</kbd> or <kbd>F</kbd> <span>Toggle Flight (climb / land)</span></div>
+        <div class="help-row"><kbd>Space (Hold)</kbd> <span>Climb higher while flying</span></div>
+      </div>
+
+      <div class="help-section">
+        <h3>WEAPON & COMBAT</h3>
+        <div class="help-row"><kbd>Mouse</kbd> <span>Look / Aim (Click screen to lock cursor)</span></div>
+        <div class="help-row"><kbd>Left Click</kbd> <span>Shoot weapon (hold for automatic guns)</span></div>
+        <div class="help-row"><kbd>Right Click</kbd> <span>Sniper Scope / Zoom (AWP Sniper only)</span></div>
+        <div class="help-row-highlight">
+          <kbd>1</kbd> to <kbd>8</kbd> or <kbd>Scroll Wheel</kbd>
+          <span>SWITCH GUNS (Pistol, Shotgun, Chaingun, etc.)</span>
+        </div>
+        <div class="help-row"><kbd>T</kbd> <span>Quick-switch straight to Rocket Launcher</span></div>
+        <div class="help-row"><kbd>Tab</kbd> <span>Open LOADOUT menu — every weapon is already unlocked</span></div>
+      </div>
+
+      <div class="help-section">
+        <h3>WORLD</h3>
+        <div class="help-row"><kbd>i</kbd> <span>Toggle this Help screen at any time</span></div>
+        <div class="help-row"><kbd>u</kbd> <span>Toggle Weapons Dictionary overlay</span></div>
+      </div>
+
+      <p class="help-footer">Every weapon is free and already yours — drop in and frag!</p>
+    </div>
+  </div>
+
+  <!-- Weapons Manifesto Overlay (u) -->
+  <div id="weapons-overlay" class="hidden">
+    <div class="weapons-card">
+      <div class="weapons-header">
+        <h2>TACTICAL WEAPONS DICTIONARY</h2>
+        <button id="weapons-close" type="button" aria-label="Close weapons dictionary">✕</button>
+      </div>
+      <div class="weapons-body">
+        <div id="weapons-manifesto-grid"></div>
+      </div>
+      <p class="help-footer">Press <kbd>u</kbd> or click ✕ to close. Left-click any weapon card to switch weapons!</p>
+    </div>
+  </div>
+
+  <!-- Sniper Scope Overlay -->
+  <div id="sniper-scope" class="hidden">
+    <div class="scope-lens">
+      <div class="scope-crosshair"></div>
+    </div>
+    <div class="scope-indicators">
+      <div class="indicator elevation">ELEV. 0.00m</div>
+      <div class="indicator range">RNG. 100m</div>
+      <div class="indicator wind">WND. L 2m/s</div>
+      <div class="indicator laser">LASER: ACTIVE</div>
+    </div>
+  </div>
+
+  <div id="banner"></div>
+
+  <!-- Three.js renders its canvas into this container -->
+  <div id="game-container" class="hidden"></div>
+
+  <div id="crosshair" class="hidden"></div>
+  <div id="hitmarker"></div>
+  <div id="damage-flash"></div>
+
+  <div id="click-overlay" class="hidden">
+    <span>Click to aim</span>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

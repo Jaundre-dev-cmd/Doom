@@ -220,7 +220,8 @@ doom/
 ├── server/
 │   └── index.js          Node HTTP + WebSocket relay server
 └── public/                Client (served as static files)
-    ├── index.html          Lobby UI + HUD markup, loads Three.js via CDN
+    ├── home.html           Game lobby + HUD markup, loads Three.js via CDN
+    ├── index.html          Redirects to the game homepage
     ├── css/style.css
     └── js/
         ├── constants.js    Weapons, skins, maps, movement tuning
