@@ -1,14 +1,6 @@
-// ---------------------------------------------------------------------------
-// Ported from Tiny Strike (https://github.com/guyz/tinystrike), MIT License,
-// Copyright (c) 2026 Guy Zyskind.
-// Tiny Strike's weapon-rendering code (src/gfx/) is itself ported from
-// Claude-of-Duty (https://github.com/mshumer/Claude-of-Duty), MIT License,
-// Copyright (c) 2026 mshumer.
-// See public/js/weapons/LICENSE for the full license text (required by MIT).
-// Adapted here to run standalone (no shared procedural PBR texture library —
-// this project supplies no `materialLibrary`, so WeaponMaterials uses its own
-// built-in plain-material fallback path; see materials.js).
-// ---------------------------------------------------------------------------
+// Ported from Tiny Strike (https://github.com/guyz/tinystrike, src/gfx/), which ported it
+// from Claude-of-Duty (https://github.com/mshumer/Claude-of-Duty). MIT/ISC licensed —
+// see public/js/weapons/LICENSE for both notices.
 
 // ============================================================================
 // TINY STRIKE — procedural weapon assembly.
@@ -197,6 +189,9 @@ export function buildWeaponObject(model, mats, opts = {}) {
  * a console warning and `weapon-thirdperson-merge.test.mjs` will say so.
  */
 export const TP_MATERIAL_CLASS = {
+  // This project's additions (shotgun shells, painted launcher/ammo can).
+  red_hull: 'red_hull',
+  olive: 'olive',
   // --- dropped: the first-person sight picture ---------------------------
   // `glass` is the frame's most expensive shader — MeshPhysicalMaterial with a
   // 5-layer iridescence stack, sheen and ior — and `lens_ring`/`lens_vig` are

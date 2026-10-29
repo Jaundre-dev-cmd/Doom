@@ -74,6 +74,18 @@ export class Network {
           case 'rocket':
             this.handlers.onRocket?.(msg);
             break;
+          case 'lobbyState':
+            this.handlers.onLobbyState?.(msg);
+            break;
+          case 'uav':
+            this.handlers.onUav?.(msg);
+            break;
+          case 'airstrike':
+            this.handlers.onAirstrike?.(msg);
+            break;
+          case 'grenade':
+            this.handlers.onGrenade?.(msg);
+            break;
           case 'explosion':
             this.handlers.onExplosion?.(msg);
             break;
@@ -91,6 +103,12 @@ export class Network {
             break;
           case 'roundClear':
             this.handlers.onRoundClear?.(msg);
+            break;
+          case 'zombieSpawn':
+            this.handlers.onZombieSpawn?.(msg);
+            break;
+          case 'zombieAttack':
+            this.handlers.onZombieAttack?.(msg);
             break;
           case 'zombieTick':
             this.handlers.onZombieTick?.(msg);
@@ -114,12 +132,15 @@ export class Network {
     }
   }
 
-  sendUpdate(x, y, z, angle, pitch, weapon) {
-    this.send({ type: 'update', x, y, z, angle, pitch, weapon });
+  // `state` = { crouching, speed, flying } — drives the remote soldier's pose.
+  sendUpdate(x, y, z, angle, pitch, weapon, state = {}) {
+    this.send({ type: 'update', x, y, z, angle, pitch, weapon, c: state.crouching ? 1 : 0, s: state.speed || 0, f: state.flying ? 1 : 0 });
   }
 
-  sendShoot() {
-    this.send({ type: 'shoot' });
+  // `origin` and `ends` (one per pellet) are [x, y, z] arrays so every
+  // other client can draw your exact tracer paths.
+  sendShoot(origin, ends = []) {
+    this.send({ type: 'shoot', o: origin, ends });
   }
 
   // Lets other clients render your rocket's flight (purely cosmetic on
@@ -129,15 +150,26 @@ export class Network {
     this.send({ type: 'rocket', x, y, z, dx, dy, dz });
   }
 
-  // The authoritative point where a rocket you fired actually detonated,
-  // so every client's explosion VFX lands in the same place even if their
-  // own cosmetic copy of your rocket didn't travel the exact same path.
-  sendExplosion(x, y, z) {
-    this.send({ type: 'explosion', x, y, z });
+  // A thrown frag grenade: everyone simulates the same throw locally.
+  sendGrenade(gid, pos, vel, fuse) {
+    this.send({ type: 'grenade', gid, x: pos.x, y: pos.y, z: pos.z, vx: vel.x, vy: vel.y, vz: vel.z, fuse });
   }
 
-  sendHit(targetId, damage) {
-    this.send({ type: 'hit', targetId, damage });
+  // The authoritative point where your rocket/grenade detonated, so every
+  // client's explosion lands in the same place.
+  sendExplosion(x, y, z, kind = 'rocket', gid) {
+    this.send({ type: 'explosion', x, y, z, kind, gid });
+  }
+
+  // `zone` is 'head' | 'body' | 'legs'; `weapon` names the damage source
+  // for the kill feed.
+  sendHit(targetId, damage, weapon, zone = 'body') {
+    this.send({ type: 'hit', targetId, damage, weapon, zone });
+  }
+
+  // Damage from your own explosive.
+  sendSelfHit(damage, weapon) {
+    this.send({ type: 'selfHit', damage, weapon });
   }
 
   sendZombieHit(targetId, damage) {

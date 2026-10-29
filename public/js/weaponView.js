@@ -9,6 +9,7 @@ import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { buildAK } from './weapons/models/ak.js';
 import { buildWeaponObject } from './weapons/build.js';
 import { WeaponMaterials } from './weapons/materials.js';
+import { hasProceduralWeapon, firstPersonWeapon, weaponNodes } from './weaponModels.js';
 
 // Real .glb models (ported from the open-source Tiny Strike project — see
 // public/assets/weapons/LICENSE for full attribution). Each is loaded once
@@ -74,7 +75,6 @@ function loadArmsTemplate() {
 // gun, so it's scaled down to a gloved-human-hand size and re-seated so its
 // fist centre — not the arm's root bone — lands on the grip.
 const NPC_ARM_SCALE = 0.221;
-const NPC_ARM_FIST_CENTER = [0.045, -0.007, 0.012];
 
 // rot/scale per weapon family; pos is pre-solved (grip - R*S*fistCenter) for
 // the four grip-at-origin families. See the module comment above.
@@ -180,7 +180,8 @@ async function buildArms(weaponKey) {
       }
     });
     const family = NPC_ARM_FAMILY[weaponKey] || 'rifle';
-    const pose = NPC_ARM_POSE_OVERRIDE[weaponKey] || NPC_ARM_POSES[family] || NPC_ARM_POSES.rifle;
+    const override = hasProceduralWeapon(weaponKey) ? null : NPC_ARM_POSE_OVERRIDE[weaponKey];
+    const pose = override || NPC_ARM_POSES[family] || NPC_ARM_POSES.rifle;
     arms.position.fromArray(pose.pos);
     arms.rotation.set(pose.rot[0], pose.rot[1], pose.rot[2]);
     arms.scale.setScalar(pose.scale);
@@ -470,6 +471,34 @@ const VIEWMODEL_TRANSFORMS = {
   mp5: { position: [0.26, -0.2, -0.75], scale: 0.7 },
   awp: { position: [0.26, -0.2, -1.15], scale: 0.55 },
 };
+
+// Placement for the realistic procedural models (real scale, grip-at-origin,
+// same convention as the .glb files above).
+// Iron-sight aiming, per weapon: `relief` = eye distance behind the rear
+// sight, `dy` = eye height above the model's rear-sight node. Each was tuned
+// in /weapon-lab.html?w=<id>&ads=1 until the front post sat in the rear
+// notch on the aim point (AK: over the top cover hump; MP5: just over the
+// drum, front post inside the hood; shotgun: bead on the receiver line).
+const IRON_SIGHTS = {
+  pistol: { relief: 0.3, dy: 0.002 },
+  ak47: { relief: 0.2, dy: 0.023 },
+  mp5: { relief: 0.12, dy: 0.013 },
+  shotgun: { relief: 0.16, dy: 0.005 },
+  rocket: { relief: 0.13, dy: 0.004 },
+};
+
+// Full size and close to the eye, like a Call of Duty viewmodel; `yaw`
+// cants the muzzle in toward the centre of the screen at the hip.
+const PROCEDURAL_TRANSFORMS = {
+  pistol: { position: [0.085, -0.085, -0.26], scale: 1, yaw: 0.05 },
+  shotgun: { position: [0.125, -0.075, -0.32], scale: 1, yaw: 0.06 },
+  chaingun: { position: [0.15, -0.07, -0.36], scale: 1, yaw: 0.06 },
+  rocket: { position: [0.17, -0.11, -0.22], scale: 1, yaw: 0.06 },
+  ak47: { position: [0.13, -0.115, -0.35], scale: 1, yaw: 0.06 },
+  m4a1: { position: [0.13, -0.135, -0.3], scale: 1, yaw: 0.06 },
+  mp5: { position: [0.12, -0.125, -0.27], scale: 1, yaw: 0.06 },
+  awp: { position: [0.13, -0.15, -0.3], scale: 1, yaw: 0.05 },
+};
 const DEFAULT_TRANSFORM = { position: [0.3, -0.25, -0.9], scale: 1 };
 
 // Async because a real .glb has to be fetched and parsed the first time a
@@ -480,8 +509,14 @@ export async function createWeaponView(weaponKey) {
   const group = new THREE.Group();
   group.userData.weaponKey = weaponKey;
 
-  const model = GLB_PATHS[weaponKey] ? await buildGlbWeapon(weaponKey) : buildWeaponMesh(weaponKey);
+  // Realistic procedural model first; the old .glb / primitive models are
+  // only a fallback if a procedural build ever fails.
+  let model = hasProceduralWeapon(weaponKey) ? firstPersonWeapon(weaponKey) : null;
+  const nodes = model ? weaponNodes(weaponKey) : null;
+  if (!model) model = GLB_PATHS[weaponKey] ? await buildGlbWeapon(weaponKey) : buildWeaponMesh(weaponKey);
   group.add(model);
+  group.userData.gun = model;
+  if (nodes) setupWeaponAnimation(model, nodes, weaponKey);
 
   // Real skinned arm+hand (fingers, wrist, sleeve) instead of two boxes —
   // see the module comment above buildArms for why these numbers are what
@@ -489,7 +524,46 @@ export async function createWeaponView(weaponKey) {
   const arms = (await buildArms(weaponKey)) || buildFallbackHands(weaponKey);
   group.add(arms);
 
-  const transform = VIEWMODEL_TRANSFORMS[weaponKey] || DEFAULT_TRANSFORM;
+  const transform = (nodes && PROCEDURAL_TRANSFORMS[weaponKey]) || VIEWMODEL_TRANSFORMS[weaponKey] || DEFAULT_TRANSFORM;
+
+  // Aim-down-sights placement: centre the gun horizontally and bring its
+  // top edge (iron sights / optic rail) onto the line of sight, so the
+  // sights actually sit on the crosshair instead of one generic offset.
+  const bounds = new THREE.Box3().setFromObject(model, true);
+  const s = transform.scale;
+  const cx = (bounds.min.x + bounds.max.x) / 2;
+  group.userData.adsPosition = [-cx * s, -bounds.max.y * s - 0.034, transform.position[2] + 0.04];
+
+  // Anchor points for effects: the muzzle (front of the barrel, near the
+  // top where the bore sits) and the ejection port (right side of the
+  // receiver), both in group-local space.
+  const h = bounds.max.y - bounds.min.y;
+  const muzzle = new THREE.Object3D();
+  const ejector = new THREE.Object3D();
+  if (nodes) {
+    // The model knows exactly where its bore, ejection port and sight line are.
+    muzzle.position.fromArray(nodes.muzzle);
+    ejector.position.fromArray(nodes.eject || nodes.muzzle);
+    const sight = nodes.sight || nodes.ironSight;
+    const iron = IRON_SIGHTS[weaponKey];
+    if (iron && nodes.ironSight) {
+      // Iron sights: rear notch and front post lined up on the eye axis.
+      const r = nodes.ironSight;
+      group.userData.adsPosition = [-r[0] * s, -(r[1] + iron.dy) * s, -iron.relief - r[2] * s];
+      group.userData.ironSights = true;
+    } else if (sight) {
+      // Optics: sight line on the eye axis, ~11 cm of eye relief.
+      group.userData.adsPosition = [-sight[0] * s, -sight[1] * s, -0.11 - sight[2] * s];
+    }
+    group.userData.baseYaw = transform.yaw || 0;
+  } else {
+    muzzle.position.set(cx, bounds.max.y - h * 0.3, bounds.min.z);
+    ejector.position.set(bounds.max.x, bounds.max.y - h * 0.28, THREE.MathUtils.lerp(bounds.min.z, bounds.max.z, 0.55));
+  }
+  group.add(muzzle, ejector);
+  group.userData.muzzle = muzzle;
+  group.userData.ejector = ejector;
+
   group.position.set(...transform.position);
   group.scale.setScalar(transform.scale);
   // Read back by main.js's walk-bob/recoil animation, which offsets from
@@ -497,4 +571,82 @@ export async function createWeaponView(weaponKey) {
   group.userData.basePosition = transform.position;
 
   return group;
+}
+
+// --- Moving parts -------------------------------------------------------------
+// Slide / bolt / pump cycling, minigun barrel spin, magazine drop on reload,
+// and the RPG warhead leaving the tube.
+const CYCLE_SPEED = { pistol: 16, ak47: 22, m4a1: 22, mp5: 24, chaingun: 30, shotgun: 2.6, awp: 1.7, rocket: 4 };
+
+function setupWeaponAnimation(gun, nodes, weaponKey) {
+  const parts = gun.userData.parts || {};
+  const anim = { key: weaponKey, nodes, parts, rest: new Map(), cycle: 0, spin: 0, spinVel: 0 };
+  for (const p of Object.values(parts)) anim.rest.set(p, p.position.clone());
+  // Re-pivot the minigun's barrel cluster onto its own axis so it can spin.
+  if (parts.barrels && nodes.barrelAxis) {
+    const [ax, ay] = nodes.barrelAxis;
+    for (const child of parts.barrels.children) {
+      child.position.x -= ax;
+      child.position.y -= ay;
+    }
+    parts.barrels.position.x += ax;
+    parts.barrels.position.y += ay;
+    anim.rest.set(parts.barrels, parts.barrels.position.clone());
+  }
+  gun.userData.anim = anim;
+}
+
+export function weaponFired(view) {
+  const anim = view?.userData.gun?.userData.anim;
+  if (!anim) return;
+  anim.cycle = 1;
+  anim.spinVel = Math.max(anim.spinVel, 45);
+}
+
+/**
+ * @param {object} state { reloadT: 0..1 | null, magEmpty: bool, spinning: bool }
+ */
+export function updateWeaponParts(view, dt, state) {
+  const anim = view?.userData.gun?.userData.anim;
+  if (!anim) return;
+  const { parts, nodes, rest } = anim;
+  anim.cycle = Math.max(0, anim.cycle - dt * (CYCLE_SPEED[anim.key] || 20));
+  // Back fast, return a touch slower: a real recoil stroke.
+  const p = 1 - anim.cycle;
+  const stroke = anim.cycle > 0 ? (p < 0.35 ? p / 0.35 : 1 - (p - 0.35) / 0.65) : 0;
+  const cyclers = [
+    [parts.slide, nodes.slideTravel || [0, 0, 0.022]],
+    [parts.bolt, nodes.boltTravel || [0, 0, 0.06]],
+    [parts.charging, nodes.chargeTravel || [0, 0, 0]],
+    [parts.pump, nodes.pumpTravel || [0, 0, 0.09]],
+  ];
+  for (const [part, travel] of cyclers) {
+    if (!part) continue;
+    const r = rest.get(part);
+    part.position.set(r.x + travel[0] * stroke, r.y + travel[1] * stroke, r.z + travel[2] * stroke);
+  }
+
+  if (parts.barrels) {
+    if (state.spinning) anim.spinVel = Math.max(anim.spinVel, 40);
+    anim.spinVel *= Math.exp(-dt * 1.6);
+    parts.barrels.rotation.z += anim.spinVel * dt;
+  }
+
+  if (parts.magazine) {
+    const r = rest.get(parts.magazine);
+    const drop = nodes.magDrop || [0, -0.4, 0];
+    let k = 0;
+    const t = state.reloadT;
+    if (t !== null && t !== undefined) {
+      if (t < 0.25) k = 0;
+      else if (t < 0.42) k = (t - 0.25) / 0.17; // mag out
+      else if (t < 0.55) k = 1;
+      else if (t < 0.68) k = 1 - (t - 0.55) / 0.13; // fresh mag in
+    }
+    const e = k * k;
+    parts.magazine.position.set(r.x + drop[0] * e, r.y + drop[1] * e, r.z + drop[2] * e);
+    parts.magazine.visible = k < 0.98;
+  }
+
+  if (parts.warhead) parts.warhead.visible = !state.magEmpty || (state.reloadT ?? 0) > 0.6;
 }

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Map Lab</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font: 12px monospace; color: #fff; }
+    #info { position: fixed; left: 8px; top: 6px; text-shadow: 0 1px 2px #000; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+        "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.8.3/build/index.module.js",
+        "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+        "postprocessing": "https://cdn.jsdelivr.net/npm/postprocessing@6.36.4/build/index.js",
+        "n8ao": "https://cdn.jsdelivr.net/npm/n8ao@1.9.4/dist/N8AO.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="info"></div>
+  <!-- Dev tool: builds a map exactly like the game does and renders it from
+       four viewpoints (2x2 grid).
+       map-lab.html?map=forest&q=high
+       map-lab.html?map=forest&cam=x,y,z,yawDeg,pitchDeg   (one full-screen view) -->
+  <script type="module">
+    import * as THREE from 'three';
+    import { buildWorld } from './js/world.js';
+    import { getQualityPreset, batchStaticMeshes, LightPool, createPostFx } from './js/perf.js';
+
+    const params = new URLSearchParams(location.search);
+    const mapId = params.get('map') || 'forest';
+    const quality = getQualityPreset(params.get('q') || 'high');
+    const t0 = performance.now();
+    const world = buildWorld(mapId, { quality });
+    const buildMs = performance.now() - t0;
+    const scene = world.scene;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.shadowMap.enabled = quality.shadows;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.setScissorTest(true);
+    document.body.appendChild(renderer.domElement);
+
+    batchStaticMeshes(scene);
+    const lights = new LightPool(scene, quality.lights, 2);
+    if (world.envScene) {
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      scene.environment = pmrem.fromScene(world.envScene, 0, 0.1, 5000).texture;
+      scene.environmentIntensity = mapId === 'forest' ? 0.55 : 0.35;
+    }
+    const sunOffset = world.sun.position.clone();
+    world.update?.(1.3);
+
+    const deg = THREE.MathUtils.degToRad;
+    // Eye-level views around the forest (x, y, z, yaw, pitch); yaw 0 looks -Z.
+    const presets = [
+      [-84, 1.7, -84, -45, -2],   // from a spawn into the woods
+      [-20, 1.7, 45, 200, -6],    // among trees, looking at the ground cover
+      [60, 1.7, 30, 90, 0],       // across a clearing to the treeline
+      [-45, 1.7, -15, 160, -14],  // close to rocks/logs/grass
+    ];
+    const custom = params.get('cam');
+    const views = custom ? [custom.split(',').map(Number)] : presets;
+    const cols = views.length > 1 ? 2 : 1;
+    const rows = Math.ceil(views.length / cols);
+    const w = innerWidth / cols;
+    const h = innerHeight / rows;
+
+    // &fx=1 renders the first view through the game's post-processing
+    // (ambient occlusion, grading) instead of the plain render.
+    if (params.get('fx')) {
+      const [x, y, z, yaw, pitch] = views[0];
+      renderer.setScissorTest(false);
+      const cam = new THREE.PerspectiveCamera(59, innerWidth / innerHeight, 0.05, 600);
+      cam.rotation.order = 'YXZ';
+      cam.position.set(x, y, z);
+      cam.rotation.set(deg(pitch), deg(yaw), 0);
+      world.sun.target.position.set(x, 0, z);
+      world.sun.position.set(x + sunOffset.x, sunOffset.y, z + sunOffset.z);
+      lights.update(1, cam.position);
+      const fx = await createPostFx(renderer, scene, cam, quality);
+      fx.render(0.016);
+      document.getElementById('info').textContent = `${mapId} q=${params.get('q') || 'high'} post-fx`;
+      window.labReady = true;
+      throw new Error('fx view done');
+    }
+
+    views.forEach((v, i) => {
+      const [x, y, z, yaw, pitch] = v;
+      const cam = new THREE.PerspectiveCamera(59, w / h, 0.05, 600);
+      cam.rotation.order = 'YXZ';
+      cam.position.set(x, y, z);
+      cam.rotation.set(deg(pitch), deg(yaw), 0);
+      cam.updateMatrixWorld();
+      world.sun.target.position.set(x, 0, z);
+      world.sun.position.set(x + sunOffset.x, sunOffset.y, z + sunOffset.z);
+      lights.update(1, cam.position);
+      world.update?.(0, cam.position); // same vegetation culling as the game
+      const col = i % cols;
+      const row = rows - 1 - Math.floor(i / cols);
+      renderer.setViewport(col * w, row * h, w, h);
+      renderer.setScissor(col * w, row * h, w, h);
+      renderer.render(scene, cam);
+    });
+    document.getElementById('info').textContent =
+      `${mapId} q=${params.get('q') || 'high'}  build ${buildMs.toFixed(0)}ms, total ${(performance.now() - t0).toFixed(0)}ms  calls=${renderer.info.render.calls} tris=${renderer.info.render.triangles}`;
+    window.labReady = true;
+  </script>
+</body>
+</html>

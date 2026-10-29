@@ -3,98 +3,131 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DOOM Clone — 3D</title>
+  <meta name="theme-color" content="#07090b" />
+  <title>DOOM CLONE — Tactical Warfare</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 3 56 11v19c0 15-11 25-24 31C19 55 8 45 8 30V11z' fill='%230d1115' stroke='%23f2a33a' stroke-width='3.5' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='28' r='10.5' fill='none' stroke='%23f2a33a' stroke-width='3.5'/%3E%3Cpath d='M32 12v8M32 36v8M16 28h8M40 28h8M20 46l12 6 12-6' fill='none' stroke='%23f2a33a' stroke-width='3.5' stroke-linecap='square'/%3E%3Ccircle cx='32' cy='28' r='2.6' fill='%23f2a33a'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" />
   <link rel="stylesheet" href="css/style.css" />
-  <!-- Three.js loaded from a CDN as an ES module — no build step, no
-       bundler, no assets to download/license. Pinned version for
-       reproducibility. -->
+  <!-- Three.js + three-mesh-bvh loaded from a CDN as ES modules — no build
+       step, no bundler. Pinned versions for reproducibility. -->
   <script type="importmap">
     {
       "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+        "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.8.3/build/index.module.js",
+        "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+        "postprocessing": "https://cdn.jsdelivr.net/npm/postprocessing@6.36.4/build/index.js",
+        "n8ao": "https://cdn.jsdelivr.net/npm/n8ao@1.9.4/dist/N8AO.js"
       }
     }
   </script>
 </head>
 <body>
 
-  <!-- Lobby: connect, loadout (weapon + skin), map select, deploy -->
+  <!-- ===================================================================
+       LOBBY — play / operator / armory / settings / intel
+       =================================================================== -->
   <div id="lobby">
     <div class="lobby-container">
       <!-- Sidebar navigation -->
       <aside class="lobby-sidebar">
         <div class="lobby-logo">
-          <h1>DOOM<span>CLONE</span></h1>
-          <span class="version-badge">v2.1 TACTICAL</span>
+          <svg class="logo-emblem" viewBox="0 0 64 64" aria-hidden="true">
+            <defs>
+              <linearGradient id="emblem-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#1b2128" />
+                <stop offset="1" stop-color="#080a0d" />
+              </linearGradient>
+            </defs>
+            <path d="M32 3 56 11v19c0 15-11 25-24 31C19 55 8 45 8 30V11z" fill="url(#emblem-fill)" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" />
+            <path d="M32 7.5 52 14v16c0 12.4-8.8 20.8-20 26.2C20.8 50.8 12 42.4 12 30V14z" fill="none" stroke="currentColor" stroke-opacity="0.28" stroke-width="1" />
+            <circle cx="32" cy="28" r="10.5" fill="none" stroke="currentColor" stroke-width="2.4" />
+            <path d="M32 12.5v8M32 35.5v8M16.5 28h8M39.5 28h8" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" />
+            <circle cx="32" cy="28" r="2.2" fill="currentColor" />
+            <path d="M21 46.5 32 52l11-5.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="miter" />
+          </svg>
+          <div class="logo-text">
+            <h1>DOOM<span>CLONE</span></h1>
+            <div class="logo-tagline">TACTICAL WARFARE</div>
+            <span class="version-badge">v3.0</span>
+          </div>
         </div>
+
         <nav class="lobby-nav">
           <button type="button" class="nav-btn active" data-tab="deploy-tab">
-            <svg viewBox="0 0 16 16"><path fill="currentColor" d="M11.25 1a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-1.5 0V1.75a.75.75 0 0 1 .75-.75Zm-6.5 0a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-1.5 0V1.75a.75.75 0 0 1 .75-.75ZM3 15h10a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1Z"/></svg>
-            DEPLOY
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 2.5v11l9-5.5z"/></svg>
+            <span class="nav-label">PLAY</span>
           </button>
           <button type="button" class="nav-btn" data-tab="operator-tab">
-            <svg viewBox="0 0 16 16"><path fill="currentColor" d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm4 8c0-2.21-3.13-4-7-4s-7 1.79-7 4v2h14v-2Zm-12.7 1c.52-1.31 2.87-2 4.7-2s4.18.69 4.7 2H3.3Z"/></svg>
-            OPERATOR
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm4 8c0-2.21-3.13-4-7-4s-7 1.79-7 4v2h14v-2Zm-12.7 1c.52-1.31 2.87-2 4.7-2s4.18.69 4.7 2H3.3Z"/></svg>
+            <span class="nav-label">OPERATOR</span>
           </button>
           <button type="button" class="nav-btn" data-tab="armory-tab">
-            <svg viewBox="0 0 16 16"><path fill="currentColor" d="M3 3h10v2H3V3Zm0 4h10v2H3V7Zm0 4h10v2H3v-2Z"/></svg>
-            ARMORY
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1 6h10l1-1.5h2.5V7H13v1.5H8.5L7.4 12H4.6l.8-3.5H1z"/></svg>
+            <span class="nav-label">ARMORY</span>
+          </button>
+          <button type="button" class="nav-btn" data-tab="settings-tab">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 3.5h7.1a2 2 0 0 1 3.8 0H14v1.2h-1.1a2 2 0 0 1-3.8 0H2zm0 3.9h1.1a2 2 0 0 1 3.8 0H14v1.2H6.9a2 2 0 0 1-3.8 0H2zm0 3.9h6.1a2 2 0 0 1 3.8 0H14v1.2h-2.1a2 2 0 0 1-3.8 0H2z"/></svg>
+            <span class="nav-label">SETTINGS</span>
           </button>
           <button type="button" class="nav-btn" data-tab="intel-tab">
-            <svg viewBox="0 0 16 16"><path fill="currentColor" d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14Zm0-1A6 6 0 1 0 8 2a6 6 0 0 0 0 12Zm-.5-7a.5.5 0 0 1 1 0v4a.5.5 0 0 1-1 0V7Zm0-2a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0Z"/></svg>
-            INTEL & KEYMAP
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1 4.5A1.5 1.5 0 0 1 2.5 3h11A1.5 1.5 0 0 1 15 4.5v7a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 11.5zM3 5v1.5h1.5V5zm2.5 0v1.5H7V5zM8 5v1.5h1.5V5zm2.5 0v1.5H12V5zM3 7.5V9h1.5V7.5zm2.5 0V9H7V7.5zm2.5 0V9h1.5V7.5zm2.5 0V9H12V7.5zM4.5 10v1.3h7V10z"/></svg>
+            <span class="nav-label">INTEL &amp; KEYMAP</span>
           </button>
         </nav>
+
         <div class="sidebar-footer">
-          <p>Multiplayer Server: Online</p>
+          <p class="server-status"><i class="status-dot"></i>Multiplayer Server: Online</p>
+          <p class="sidebar-legal">Build 3.0 · Original work · Not affiliated with any publisher</p>
         </div>
       </aside>
 
       <!-- Main content area -->
       <main class="lobby-content">
         <form id="lobby-form">
-          <!-- Deploy Tab -->
+
+          <!-- ============ PLAY ============ -->
           <div id="deploy-tab" class="tab-panel active">
             <div class="panel-header">
+              <span class="panel-kicker">01 // OPERATION</span>
               <h2>TACTICAL DEPLOYMENT</h2>
-              <p>Configure network connection and select operational theater.</p>
+              <p>Set your callsign, connect to a server and choose the theater of operations.</p>
             </div>
-            <div class="lobby-grid">
-              <div class="lobby-field">
-                <label for="player-name">Callsign / Name</label>
-                <input id="player-name" type="text" maxlength="16" placeholder="Player" autocomplete="off" />
-              </div>
-              <div class="lobby-field">
-                <label for="server-address">Server Address</label>
-                <input id="server-address" type="text" placeholder="ws://192.168.1.10:3000" autocomplete="off" />
-              </div>
-            </div>
-            <div id="connection-info" class="connection-banner">Detecting address...</div>
 
             <section class="lobby-section">
-              <h2>Select Scenery / Map</h2>
+              <h3 class="section-title">Network</h3>
+              <div class="lobby-grid">
+                <div class="lobby-field">
+                  <label for="player-name">Callsign</label>
+                  <input id="player-name" type="text" maxlength="16" placeholder="Player" autocomplete="off" />
+                </div>
+                <div class="lobby-field">
+                  <label for="server-address">Server Address</label>
+                  <input id="server-address" type="text" placeholder="ws://192.168.1.10:3000" autocomplete="off" />
+                </div>
+              </div>
+              <div id="connection-info" class="connection-banner">Detecting address...</div>
+            </section>
+
+            <section class="lobby-section">
+              <h3 class="section-title">Theater of Operations</h3>
               <div id="map-cards" class="card-row map-row"></div>
               <p class="help-desc">The map is locked by the first player to deploy; joining players automatically enter the active theater.</p>
             </section>
 
             <section class="lobby-section">
-              <h2>Match Rules</h2>
+              <h3 class="section-title">Match Rules</h3>
               <div class="lobby-grid">
                 <div class="lobby-field">
-                  <label for="friendly-fire">Friendly Fire (Teammate Damage)</label>
+                  <label for="friendly-fire">Friendly Fire</label>
                   <select id="friendly-fire">
-                    <option value="1" selected>Friendly Fire Enabled / Free-For-All (Default)</option>
+                    <option value="1" selected>Enabled / Free-For-All (Default)</option>
                     <option value="0">Teammates Block Damage (Co-op)</option>
                   </select>
                 </div>
-              </div>
-              <p class="help-desc">Friendly fire lets teammates shoot, hit, and damage each other just like enemies do.</p>
-            </section>
-
-            <section class="lobby-section">
-              <h2>Combat AI Bot Squads</h2>
-              <div class="lobby-grid three-cols">
                 <div class="lobby-field">
                   <label for="player-team">Your Team</label>
                   <select id="player-team">
@@ -102,6 +135,13 @@
                     <option value="2">Team 2 (Enemies)</option>
                   </select>
                 </div>
+              </div>
+              <p class="help-desc">Friendly fire lets teammates shoot, hit, and damage each other just like enemies do.</p>
+            </section>
+
+            <section class="lobby-section">
+              <h3 class="section-title">AI Combat Squads</h3>
+              <div class="lobby-grid">
                 <div class="lobby-field">
                   <label for="ally-bots">Team 1 Bots (Allies)</label>
                   <select id="ally-bots">
@@ -135,60 +175,85 @@
                   </select>
                 </div>
               </div>
-              <p class="help-desc">Bots are fully interactive AI players that move, navigate vertical factories, and shoot dynamic glowing bullet tracers.</p>
+              <p class="help-desc">Bots are fully interactive AI players that move, navigate vertical factories, and return fire.</p>
             </section>
-            
-            <button id="deploy-button" type="submit">LAUNCH MISSION</button>
-            <p id="lobby-status" class="status"></p>
+
+            <div class="deploy-bar">
+              <p id="lobby-status" class="status"></p>
+              <button id="deploy-button" type="submit">
+                <span class="deploy-label">DEPLOY</span>
+                <span class="deploy-sub">Enter combat zone</span>
+                <svg class="deploy-arrow" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 4h4l8 8-8 8H5l8-8z"/></svg>
+              </button>
+            </div>
           </div>
 
-          <!-- Operator Tab -->
+          <!-- ============ OPERATOR ============ -->
           <div id="operator-tab" class="tab-panel">
             <div class="panel-header">
-              <h2>OPERATOR CUSTOMIZATION</h2>
-              <p>Customize your identity, armor paint job, and protective headgear.</p>
+              <span class="panel-kicker">02 // IDENTITY</span>
+              <h2>OPERATOR</h2>
+              <p>Customize your camouflage, visor accent and protective headgear.</p>
             </div>
-            <section class="lobby-section">
-              <h2>Combat Armor Skin</h2>
-              <div id="skin-swatches" class="swatch-row"></div>
-            </section>
-            <section class="lobby-section">
-              <h2>Visor / Accent Color</h2>
-              <div id="accent-swatches" class="swatch-row"></div>
-            </section>
-            <section class="lobby-section">
-              <h2>Headgear Accessory</h2>
-              <div id="headgear-cards" class="card-row"></div>
-            </section>
+            <div class="operator-layout">
+              <div class="operator-stage">
+                <div class="stage-hud">
+                  <span class="stage-tag">PREVIEW</span>
+                  <span class="stage-tag stage-tag-dim">360° VIEW</span>
+                </div>
+                <canvas id="operator-preview"></canvas>
+                <div class="stage-floor" aria-hidden="true"></div>
+              </div>
+              <div class="operator-options">
+                <section class="lobby-section">
+                  <h3 class="section-title">Camouflage</h3>
+                  <div id="skin-swatches" class="swatch-row"></div>
+                  <div id="skin-name"></div>
+                </section>
+                <section class="lobby-section">
+                  <h3 class="section-title">Visor / Accent</h3>
+                  <div id="accent-swatches" class="swatch-row"></div>
+                </section>
+                <section class="lobby-section">
+                  <h3 class="section-title">Headgear</h3>
+                  <div id="headgear-cards" class="card-row"></div>
+                </section>
+              </div>
+            </div>
           </div>
 
-          <!-- Armory Tab -->
+          <!-- ============ ARMORY ============ -->
           <div id="armory-tab" class="tab-panel">
             <div class="panel-header">
-              <h2>TACTICAL ARMORY</h2>
-              <p>Select your starting weapon. Every weapon is fully unlocked and ready for combat.</p>
+              <span class="panel-kicker">03 // LOADOUT</span>
+              <h2>ARMORY</h2>
+              <p>Select your starting weapon. Every weapon is unlocked and ready for combat.</p>
             </div>
             <div class="armory-layout">
               <div id="weapon-cards" class="card-row weapon-grid"></div>
               <div class="weapon-stats-panel">
+                <!-- Live, studio-lit 3D model of the selected weapon -->
+                <canvas id="armory-preview"></canvas>
+                <span class="stats-kicker">WEAPON DATA</span>
                 <h3 id="stat-weapon-name">Weapon Name</h3>
+                <div id="stat-weapon-specs" class="weapon-specs"></div>
                 <div class="stat-row">
                   <span>Damage</span>
                   <div class="stat-bar-bg"><div id="stat-bar-damage" class="stat-bar-fill"></div></div>
-                  <span id="stat-val-damage">0</span>
+                  <span id="stat-val-damage" class="stat-val">0</span>
                 </div>
                 <div class="stat-row">
                   <span>Fire Rate</span>
                   <div class="stat-bar-bg"><div id="stat-bar-firerate" class="stat-bar-fill"></div></div>
-                  <span id="stat-val-firerate">0</span>
+                  <span id="stat-val-firerate" class="stat-val">0</span>
                 </div>
                 <div class="stat-row">
                   <span>Precision</span>
                   <div class="stat-bar-bg"><div id="stat-bar-precision" class="stat-bar-fill"></div></div>
-                  <span id="stat-val-precision">0</span>
+                  <span id="stat-val-precision" class="stat-val">0</span>
                 </div>
-                <div class="stat-row">
-                  <span>Auto-Fire</span>
+                <div class="stat-row stat-row-inline">
+                  <span>Fire Mode (Auto)</span>
                   <span id="stat-val-auto" class="stat-badge">NO</span>
                 </div>
                 <p id="stat-weapon-desc" class="weapon-desc-text">Weapon details and behavior analysis.</p>
@@ -196,33 +261,155 @@
             </div>
           </div>
 
-          <!-- Intel Tab -->
+          <!-- ============ SETTINGS ============ -->
+          <div id="settings-tab" class="tab-panel">
+            <div class="panel-header">
+              <span class="panel-kicker">04 // SYSTEM</span>
+              <h2>SETTINGS</h2>
+              <p>Tune aim feel and performance. Changes apply the next time you deploy.</p>
+            </div>
+            <div class="settings-layout">
+              <section class="settings-group">
+                <h3 class="section-title">Mouse &amp; Aim</h3>
+                <div class="setting-row">
+                  <div class="setting-text">
+                    <label for="set-sensitivity">Mouse Sensitivity</label>
+                    <p>Hip-fire look speed.</p>
+                  </div>
+                  <div class="setting-control">
+                    <input type="range" id="set-sensitivity" min="0.2" max="3" step="0.05" value="1" style="--fill: 28.57%" />
+                    <span id="set-sensitivity-val" class="setting-val">1.00</span>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-text">
+                    <label for="set-ads-sensitivity">ADS Sensitivity Multiplier</label>
+                    <p>Scales look speed while aiming down sights.</p>
+                  </div>
+                  <div class="setting-control">
+                    <input type="range" id="set-ads-sensitivity" min="0.3" max="1.5" step="0.05" value="0.85" style="--fill: 45.83%" />
+                    <span id="set-ads-sensitivity-val" class="setting-val">0.85</span>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-text">
+                    <label for="set-raw-input">Raw Mouse Input</label>
+                    <p>Raw mouse input (no OS acceleration).</p>
+                  </div>
+                  <div class="setting-control">
+                    <input type="checkbox" id="set-raw-input" class="toggle" checked />
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-text">
+                    <label for="set-invert-y">Invert Y</label>
+                    <p>Push mouse forward to look down.</p>
+                  </div>
+                  <div class="setting-control">
+                    <input type="checkbox" id="set-invert-y" class="toggle" />
+                  </div>
+                </div>
+              </section>
+
+              <section class="settings-group">
+                <h3 class="section-title">Display &amp; Graphics</h3>
+                <div class="setting-row">
+                  <div class="setting-text">
+                    <label for="set-fov">Field of View</label>
+                    <p>Horizontal FOV, measured like Call of Duty. 90–105 is the popular range; 120 is max.</p>
+                  </div>
+                  <div class="setting-control">
+                    <input type="range" id="set-fov" min="60" max="120" step="1" value="90" style="--fill: 50%" />
+                    <span id="set-fov-val" class="setting-val">90</span>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-text">
+                    <label for="set-weapon-fov">Weapon Field of View</label>
+                    <p>How large your gun appears on screen, independent of the world FOV.</p>
+                  </div>
+                  <div class="setting-control">
+                    <select id="set-weapon-fov">
+                      <option value="narrow">Narrow (bigger gun)</option>
+                      <option value="default" selected>Default</option>
+                      <option value="wide">Wide (smaller gun)</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-text">
+                    <label for="set-ads-fov">ADS Field of View</label>
+                    <p>Affected: aiming zoom scales with your FOV. Independent: every scope zooms the same regardless of FOV.</p>
+                  </div>
+                  <div class="setting-control">
+                    <select id="set-ads-fov">
+                      <option value="affected" selected>Affected</option>
+                      <option value="independent">Independent</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-text">
+                    <label for="set-quality">Graphics Quality</label>
+                    <p>Low / Medium give the best FPS. High / Ultra add shadows and effects.</p>
+                  </div>
+                  <div class="setting-control">
+                    <select id="set-quality">
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high" selected>High</option>
+                      <option value="ultra">Ultra</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div class="setting-text">
+                    <label for="set-show-fps">Show FPS Counter</label>
+                    <p>Small frame-rate readout in the top-left corner.</p>
+                  </div>
+                  <div class="setting-control">
+                    <input type="checkbox" id="set-show-fps" class="toggle" />
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <!-- ============ INTEL & KEYMAP ============ -->
           <div id="intel-tab" class="tab-panel">
             <div class="panel-header">
-              <h2>COMBAT READINESS & KEYMAP</h2>
-              <p>Review the full control layout and mechanical diagnostics before deploying.</p>
+              <span class="panel-kicker">05 // BRIEFING</span>
+              <h2>INTEL &amp; KEYMAP</h2>
+              <p>Review the full control layout before deploying.</p>
             </div>
             <div class="intel-grid">
               <div class="intel-col">
-                <h3>Movement & Flight</h3>
-                <div class="intel-item"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> <span>Standard Movement</span></div>
-                <div class="intel-item"><kbd>Shift</kbd> <span>Tactical Sprint</span></div>
-                <div class="intel-item"><kbd>Space</kbd> or <kbd>F</kbd> <span>Toggle Jetpack / Flight</span></div>
-                <div class="intel-item"><kbd>Space (Hold)</kbd> <span>Ascend while flying</span></div>
+                <h3>Movement</h3>
+                <div class="intel-item"><span class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>&#8593;&#8592;&#8595;&#8594;</kbd></span><span>Move</span></div>
+                <div class="intel-item"><span class="keys"><kbd>Shift</kbd></span><span>Sprint</span></div>
+                <div class="intel-item"><span class="keys"><kbd>Space</kbd></span><span>Jump</span></div>
+                <div class="intel-item"><span class="keys"><kbd>C</kbd></span><span>Crouch (toggle)</span></div>
+                <div class="intel-item"><span class="keys"><kbd>F</kbd></span><span>Toggle flight</span></div>
+                <div class="intel-item"><span class="keys"><kbd>Space</kbd> / <kbd>C</kbd></span><span>Climb / descend while flying</span></div>
               </div>
               <div class="intel-col">
-                <h3>Weaponry & Combat</h3>
-                <div class="intel-item"><kbd>Mouse</kbd> <span>Look & Aim</span></div>
-                <div class="intel-item"><kbd>Left Click</kbd> <span>Fire Weapon</span></div>
-                <div class="intel-item"><kbd>Right Click</kbd> <span>Sniper Scope (AWP zoom)</span></div>
-                <div class="intel-item"><kbd>1</kbd> to <kbd>8</kbd> / <kbd>Scroll</kbd> <span>Switch Guns</span></div>
-                <div class="intel-item"><kbd>T</kbd> <span>Quick-switch to Rocket Launcher</span></div>
+                <h3>Combat</h3>
+                <div class="intel-item"><span class="keys"><kbd>Mouse</kbd></span><span>Aim</span></div>
+                <div class="intel-item"><span class="keys"><kbd>LMB</kbd></span><span>Fire</span></div>
+                <div class="intel-item"><span class="keys"><kbd>RMB</kbd></span><span>Aim down sights (AWP = scope)</span></div>
+                <div class="intel-item"><span class="keys"><kbd>R</kbd></span><span>Reload</span></div>
+                <div class="intel-item"><span class="keys"><kbd>G</kbd></span><span>Frag grenade — hold to cook, release to throw</span></div>
+                <div class="intel-item"><span class="keys"><kbd>L</kbd></span><span>Flashlight on/off (night maps)</span></div>
+                <div class="intel-item"><span class="keys"><kbd>1</kbd>–<kbd>8</kbd> / <kbd>Scroll</kbd></span><span>Switch weapons</span></div>
+                <div class="intel-item"><span class="keys"><kbd>T</kbd></span><span>Rocket launcher</span></div>
+                <div class="intel-item"><span class="keys"><kbd>Z</kbd></span><span>UAV killstreak (3 kills)</span></div>
+                <div class="intel-item"><span class="keys"><kbd>X</kbd></span><span>Airstrike tablet — satellite targeting (5 kills)</span></div>
               </div>
               <div class="intel-col">
-                <h3>System Overlays</h3>
-                <div class="intel-item"><kbd>Tab</kbd> <span>Loadout Menu</span></div>
-                <div class="intel-item"><kbd>i</kbd> <span>Help / Controls Screen</span></div>
-                <div class="intel-item"><kbd>u</kbd> <span>Weapons Info Screen</span></div>
+                <h3>Systems</h3>
+                <div class="intel-item"><span class="keys"><kbd>Tab</kbd></span><span>Loadout</span></div>
+                <div class="intel-item"><span class="keys"><kbd>I</kbd></span><span>Help / controls</span></div>
+                <div class="intel-item"><span class="keys"><kbd>U</kbd></span><span>Weapons dictionary</span></div>
               </div>
             </div>
           </div>
@@ -231,23 +418,42 @@
     </div>
   </div>
 
-  <!-- HUD: squad, compass, radar, vitals, weapon, and the flying status badge stay on screen for the whole match -->
+  <!-- ===================================================================
+       HUD — stays on screen for the whole match
+       =================================================================== -->
   <div id="hud" class="hidden">
-    <!-- Kill Cam overlay -->
+
+    <!-- Kill Cam overlay (letterboxed; centre of the screen stays clear for the replay) -->
     <div id="killcam-overlay" class="hidden">
-      <div class="killcam-header">
-        <span class="rec-dot">●</span> REC
+      <div class="kc-letterbox kc-top">
+        <div class="killcam-header"><span class="rec-dot">●</span> KILLCAM</div>
+        <div class="killcam-title" id="killcam-title">KILL CAM - SPECTATING PLAYER</div>
+        <div class="killcam-vhs-info">
+          <div>T <span id="killcam-time">00:00:00</span></div>
+          <div>REPLAY</div>
+        </div>
       </div>
-      <div class="killcam-title" id="killcam-title">KILL CAM - SPECTATING PLAYER</div>
-      <div class="killcam-bar-container">
-        <div id="killcam-bar" class="killcam-bar"></div>
+
+      <div id="killcam-card">
+        <div class="kc-label">KILLED BY</div>
+        <div id="kc-killer-name"></div>
+        <div class="kc-weapon"><span id="kc-weapon-icon"></span><span id="kc-weapon-name"></span></div>
+        <div class="kc-stats">
+          <span>DISTANCE <b id="kc-distance">0m</b></span>
+          <span>HEALTH LEFT <b id="kc-killer-health">100</b></span>
+        </div>
+        <div id="kc-headshot" class="hidden">HEADSHOT</div>
       </div>
-      <div class="killcam-vhs-info">
-        <div>TIME: <span id="killcam-time">00:00:00</span></div>
-        <div>PLAYBACK: LIVE_PLAYBACK</div>
-        <div>TRACKING: AUTOLOCK</div>
+
+      <div class="kc-letterbox kc-bottom">
+        <div class="killcam-bar-container">
+          <div id="killcam-bar" class="killcam-bar"></div>
+        </div>
+        <div id="respawn-timer"></div>
       </div>
     </div>
+
+    <div id="fps-counter" class="hidden">-- FPS</div>
 
     <div id="scoreboard-panel" class="hud-frame">
       <div class="squad-head">
@@ -282,10 +488,15 @@
       </div>
     </div>
 
+    <ul id="killfeed"></ul>
+
     <div id="vitals-panel" class="hud-frame">
+      <div class="vitals-head">
+        <div id="stance-indicator" data-stance="stand"></div>
+      </div>
       <div class="vital-row">
         <span class="vital-icon" aria-hidden="true">
-          <svg viewBox="0 0 16 16"><path fill="currentColor" d="M8 14s-5.2-3.3-5.2-7A2.9 2.9 0 0 1 8 5.1 2.9 2.9 0 0 1 13.2 7C13.2 10.7 8 14 8 14z"/></svg>
+          <svg viewBox="0 0 16 16"><path fill="currentColor" d="M6.3 1.5h3.4v4.8h4.8v3.4H9.7v4.8H6.3V9.7H1.5V6.3h4.8z"/></svg>
         </span>
         <span class="vital-label">HEALTH</span>
         <div class="vital-bar-track"><div id="health-bar-fill" class="vital-bar-fill"></div></div>
@@ -301,27 +512,45 @@
       </div>
     </div>
 
+    <!-- Killstreaks: earned by consecutive kills, kept until used -->
+    <div id="killstreaks">
+      <div class="ks-streak"><span id="ks-count">0</span><small>STREAK</small></div>
+      <div class="ks-item" id="ks-uav" data-state="locked">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M15 6h2v6l13 3v2l-13-1-1 7 4 2v2l-5-1-5 1v-2l4-2-1-7-13 1v-2l13-3z"/></svg>
+        <div class="ks-text"><b>UAV</b><small>3 KILLS</small></div>
+        <kbd>Z</kbd>
+      </div>
+      <div class="ks-item" id="ks-airstrike" data-state="locked">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M16 2l2 8 11 6v2l-11-3-1 8 4 3v2l-5-1-5 1v-2l4-3-1-8-11 3v-2l11-6zM9 26h2v4H9zm6 0h2v4h-2zm6 0h2v4h-2z"/></svg>
+        <div class="ks-text"><b>AIRSTRIKE</b><small>5 KILLS</small></div>
+        <kbd>X</kbd>
+      </div>
+    </div>
+    <div id="uav-indicator" class="hidden">UAV ONLINE</div>
+
     <div id="weapon-panel" class="hud-frame">
       <div id="weapon-icon" aria-hidden="true"></div>
       <div class="weapon-readout">
         <div id="weapon-name">PISTOL</div>
-        <div class="ammo"><span id="ammo-mag">12</span><span class="ammo-sep">|</span><span id="ammo-reserve">36</span></div>
+        <div class="ammo"><span id="ammo-mag">12</span><span class="ammo-sep">/</span><span id="ammo-reserve">36</span></div>
       </div>
       <div class="weapon-utils">
-        <div class="util">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="9" r="4.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path stroke="currentColor" stroke-width="1.3" stroke-linecap="round" d="M8 4.8V2.4M6.2 3.2h3.6"/></svg>
-          <span>G</span>
+        <div class="util util-grenade" title="Frag grenade (G)">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="9.5" r="4.3" fill="none" stroke="currentColor" stroke-width="1.4"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M6.4 5.4V3.4h3.2v2M9.6 3.4 12.4 2"/></svg>
+          <span id="grenade-count" class="util-count">2</span>
+          <span class="util-key">G</span>
         </div>
-        <div class="util">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="4" width="10" height="8" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path stroke="currentColor" stroke-width="1.3" d="M8 4v8M3 8h10"/></svg>
-          <span>F</span>
+        <div class="util" title="Toggle flight (F)">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.2 1 4 9.2h3.1L6.4 15 12 6.6H8.8z"/></svg>
+          <span class="util-count">&nbsp;</span>
+          <span class="util-key">F</span>
         </div>
       </div>
     </div>
 
     <div id="flying-indicator" class="hidden">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.2 1 4 9.2h3.1L6.4 15 12 6.6H8.8z"/></svg>
-      FLYING
+      FLIGHT ACTIVE
     </div>
 
     <div id="zombie-hud" class="hidden hud-frame">
@@ -329,6 +558,20 @@
       <div id="zombies-remaining-value">Zombies: 0</div>
       <div id="zombie-kills-value">Your kills: 0</div>
     </div>
+
+    <!-- Centre-screen combat feedback -->
+    <div id="damage-indicators"></div>
+
+    <div id="reload-indicator" class="hidden">
+      <span>RELOADING</span>
+      <div class="reload-track"><div id="reload-bar"></div></div>
+    </div>
+
+    <div id="grenade-warning" class="hidden">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="14.5" r="6.5" fill="currentColor"/><path fill="currentColor" d="M9.5 6.2h5v3h-5z"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M14.5 6.8 18.5 4.6M17 2.8l1.5-.9M20 6.2l1.4.2"/><path fill="#0b0b0b" d="M11.2 11.3h1.6v3.9h-1.6zm0 4.9h1.6v1.6h-1.6z"/></svg>
+    </div>
+
+    <div id="kill-notify"></div>
   </div>
 
   <!-- Inventory overlay (Tab) — every weapon is already unlocked; this is a quick-switch list -->
@@ -347,52 +590,59 @@
   <div id="help-overlay" class="hidden">
     <div class="help-card">
       <div class="help-header">
-        <h2>CONTROLS & HELP</h2>
+        <h2>CONTROLS &amp; HELP</h2>
         <button id="help-close" type="button" aria-label="Close help">✕</button>
       </div>
-      
+
       <div class="help-section">
-        <h3>MOVEMENT & FLIGHT</h3>
-        <div class="help-row"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or <kbd>▲</kbd> <kbd>◀</kbd> <kbd>▼</kbd> <kbd>▶</kbd> <span>Move around</span></div>
-        <div class="help-row"><kbd>Shift</kbd> <span>Sprint (faster movement)</span></div>
-        <div class="help-row"><kbd>Space</kbd> or <kbd>F</kbd> <span>Toggle Flight (climb / land)</span></div>
-        <div class="help-row"><kbd>Space (Hold)</kbd> <span>Climb higher while flying</span></div>
+        <h3>MOVEMENT</h3>
+        <div class="help-row"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or <kbd>▲</kbd> <kbd>◀</kbd> <kbd>▼</kbd> <kbd>▶</kbd> <span>Move</span></div>
+        <div class="help-row"><kbd>Shift</kbd> <span>Sprint</span></div>
+        <div class="help-row"><kbd>Space</kbd> <span>Jump</span></div>
+        <div class="help-row"><kbd>C</kbd> <span>Crouch (toggle)</span></div>
+        <div class="help-row"><kbd>F</kbd> <span>Toggle flight</span></div>
+        <div class="help-row"><kbd>Space</kbd> / <kbd>C</kbd> <span>Climb / descend while flying</span></div>
       </div>
 
       <div class="help-section">
-        <h3>WEAPON & COMBAT</h3>
-        <div class="help-row"><kbd>Mouse</kbd> <span>Look / Aim (Click screen to lock cursor)</span></div>
-        <div class="help-row"><kbd>Left Click</kbd> <span>Shoot weapon (hold for automatic guns)</span></div>
-        <div class="help-row"><kbd>Right Click</kbd> <span>Sniper Scope / Zoom (AWP Sniper only)</span></div>
+        <h3>WEAPON &amp; COMBAT</h3>
+        <div class="help-row"><kbd>Mouse</kbd> <span>Aim (click the screen to lock the cursor)</span></div>
+        <div class="help-row"><kbd>Left Click</kbd> <span>Fire (hold for automatic weapons)</span></div>
+        <div class="help-row"><kbd>Right Click</kbd> <span>Aim down sights (AWP = scope)</span></div>
+        <div class="help-row"><kbd>R</kbd> <span>Reload</span></div>
+        <div class="help-row"><kbd>G</kbd> <span>Frag grenade — hold to cook, release to throw</span></div>
+        <div class="help-row"><kbd>L</kbd> <span>Flashlight on/off (night maps)</span></div>
         <div class="help-row-highlight">
-          <kbd>1</kbd> to <kbd>8</kbd> or <kbd>Scroll Wheel</kbd>
-          <span>SWITCH GUNS (Pistol, Shotgun, Chaingun, etc.)</span>
+          <kbd>1</kbd> to <kbd>8</kbd> or <kbd>Scroll</kbd>
+          <span>SWITCH WEAPONS</span>
         </div>
-        <div class="help-row"><kbd>T</kbd> <span>Quick-switch straight to Rocket Launcher</span></div>
-        <div class="help-row"><kbd>Tab</kbd> <span>Open LOADOUT menu — every weapon is already unlocked</span></div>
+        <div class="help-row"><kbd>T</kbd> <span>Rocket launcher</span></div>
+        <div class="help-row"><kbd>Z</kbd> <span>Call in UAV (3-kill streak)</span></div>
+        <div class="help-row"><kbd>X</kbd> <span>Airstrike: pull out tablet, target from satellite view (5-kill streak)</span></div>
       </div>
 
       <div class="help-section">
-        <h3>WORLD</h3>
-        <div class="help-row"><kbd>i</kbd> <span>Toggle this Help screen at any time</span></div>
-        <div class="help-row"><kbd>u</kbd> <span>Toggle Weapons Dictionary overlay</span></div>
+        <h3>SYSTEM</h3>
+        <div class="help-row"><kbd>Tab</kbd> <span>Loadout — every weapon is already unlocked</span></div>
+        <div class="help-row"><kbd>I</kbd> <span>Toggle this help screen</span></div>
+        <div class="help-row"><kbd>U</kbd> <span>Toggle weapons dictionary</span></div>
       </div>
 
-      <p class="help-footer">Every weapon is free and already yours — drop in and frag!</p>
+      <p class="help-footer">Every weapon is free and already yours — drop in and frag.</p>
     </div>
   </div>
 
-  <!-- Weapons Manifesto Overlay (u) -->
+  <!-- Weapons Dictionary Overlay (u) -->
   <div id="weapons-overlay" class="hidden">
     <div class="weapons-card">
       <div class="weapons-header">
-        <h2>TACTICAL WEAPONS DICTIONARY</h2>
+        <h2>WEAPONS DICTIONARY</h2>
         <button id="weapons-close" type="button" aria-label="Close weapons dictionary">✕</button>
       </div>
       <div class="weapons-body">
         <div id="weapons-manifesto-grid"></div>
       </div>
-      <p class="help-footer">Press <kbd>u</kbd> or click ✕ to close. Left-click any weapon card to switch weapons!</p>
+      <p class="help-footer">Press <kbd>U</kbd> or click ✕ to close. Click any weapon card to switch to it.</p>
     </div>
   </div>
 
@@ -409,12 +659,70 @@
     </div>
   </div>
 
+  <!-- Pre-game lobby: everyone readies up before the match starts -->
+  <div id="pregame" class="hidden">
+    <canvas id="pregame-stage"></canvas>
+    <div id="pregame-plates"></div>
+    <div class="pg-top">
+      <div class="pg-title">
+        <span class="pg-kicker">PRE-GAME LOBBY</span>
+        <h2 id="pg-map">FOREST OUTPOST</h2>
+        <span id="pg-meta">HOST — · 0 BOTS</span>
+      </div>
+      <div class="pg-count"><b id="pg-ready-count">0/1</b><span>READY</span></div>
+    </div>
+    <div id="pg-countdown" class="hidden"></div>
+    <div class="pg-bottom">
+      <div class="pg-loadout">
+        <span class="pg-kicker">YOUR WEAPON</span>
+        <div id="pg-weapons"></div>
+      </div>
+      <div class="pg-actions">
+        <button type="button" id="pg-leave">LEAVE</button>
+        <button type="button" id="pg-ready">READY UP</button>
+      </div>
+      <p id="pg-hint">The match starts when every player is ready.</p>
+    </div>
+  </div>
+
+  <!-- Satellite uplink (airstrike targeting from the tablet) -->
+  <div id="sat-overlay" class="hidden">
+    <canvas id="sat-markers"></canvas>
+    <div class="sat-scan"></div>
+    <div class="sat-frame">
+      <div class="sat-corner tl"></div><div class="sat-corner tr"></div><div class="sat-corner bl"></div><div class="sat-corner br"></div>
+    </div>
+    <div class="sat-top">
+      <span class="sat-rec">● LIVE</span>
+      <span>SATELLITE UPLINK // KH-11 // SECURE</span>
+      <span id="sat-clock">00:00:00Z</span>
+    </div>
+    <div class="sat-reticle">
+      <div class="sat-ring"></div>
+      <div class="sat-ring sat-ring-outer"></div>
+      <i class="h"></i><i class="v"></i>
+    </div>
+    <div class="sat-side">
+      <div>GRID <b id="sat-grid">--</b></div>
+      <div>ALT <b id="sat-alt">--</b></div>
+      <div>HDG <b id="sat-hdg">--</b></div>
+      <div>HOSTILES <b id="sat-hostiles">0</b></div>
+    </div>
+    <div class="sat-bottom">
+      <span><kbd>MOUSE</kbd> PAN</span>
+      <span><kbd>SCROLL</kbd> ZOOM</span>
+      <span><kbd>LMB</kbd> CONFIRM STRIKE</span>
+      <span><kbd>RMB</kbd> / <kbd>X</kbd> ABORT</span>
+    </div>
+    <div id="sat-static"></div>
+  </div>
+
   <div id="banner"></div>
 
   <!-- Three.js renders its canvas into this container -->
   <div id="game-container" class="hidden"></div>
 
-  <div id="crosshair" class="hidden"></div>
+  <div id="crosshair" class="hidden"><i class="ch-top"></i><i class="ch-bottom"></i><i class="ch-left"></i><i class="ch-right"></i><i class="ch-dot"></i></div>
   <div id="hitmarker"></div>
   <div id="damage-flash"></div>
 

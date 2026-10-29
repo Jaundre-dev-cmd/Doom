@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Weapon Lab</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #1b1e22; overflow: hidden; font: 12px monospace; color: #ccc; }
+    #info { position: fixed; left: 8px; top: 6px; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="info"></div>
+  <!-- Dev tool: renders one procedural weapon from four angles.
+       weapon-lab.html?w=shotgun -->
+  <script type="module">
+    import * as THREE from 'three';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+    import { buildWeaponModel } from './js/weapons/catalogue.js';
+    import { buildWeaponObject } from './js/weapons/build.js';
+    import { WeaponMaterials } from './js/weapons/materials.js';
+    import { WEAPON_SURFACE_LIBRARY } from './js/weapons/surfaces.js';
+
+    const id = new URLSearchParams(location.search).get('w') || 'm4a1';
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.setScissorTest(true);
+    document.body.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x2a2e33);
+    scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.6;
+    const key = new THREE.DirectionalLight(0xfff0dd, 2.5);
+    key.position.set(1, 2, 1.5);
+    scene.add(key, new THREE.HemisphereLight(0xc8d6e6, 0x3a3a30, 0.6));
+
+    const t0 = performance.now();
+    const model = buildWeaponModel(id);
+    const gun = buildWeaponObject(model, new WeaponMaterials(WEAPON_SURFACE_LIBRARY), { viewmodel: false });
+    scene.add(gun);
+    const box = new THREE.Box3().setFromObject(gun);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const r = size.length() / 2;
+    document.getElementById('info').textContent =
+      `${id}  ${(size.z * 1000).toFixed(0)}mm long  ${gun.userData.tris} tris  built in ${(performance.now() - t0).toFixed(0)}ms  ` +
+      `muzzle ${gun.userData.muzzle.map((n) => n.toFixed(3))}  sight ${gun.userData.sight.map((n) => n.toFixed(3))}`;
+
+    // ?ads=1&dy=<eye height offset>&relief=<eye distance behind rear sight>
+    // renders the sight picture down the iron sights instead of the 4 views.
+    const params = new URLSearchParams(location.search);
+    if (params.get('ads')) {
+      const r = model.nodes.ironSight;
+      const dy = Number(params.get('dy') || 0);
+      const relief = Number(params.get('relief') || 0.15);
+      const cam = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.005, 50);
+      cam.position.set(r[0], r[1] + dy, r[2] + relief);
+      cam.lookAt(r[0], r[1] + dy, r[2] - 10);
+      scene.background = new THREE.Color(0x8fb4d0);
+      renderer.setViewport(0, 0, innerWidth, innerHeight);
+      renderer.setScissor(0, 0, innerWidth, innerHeight);
+      renderer.render(scene, cam);
+      const mark = document.createElement('div');
+      mark.style.cssText = 'position:fixed;left:50%;top:50%;width:9px;height:9px;margin:-4px;border:1px solid #f00;border-radius:50%';
+      document.body.appendChild(mark);
+      document.getElementById('info').textContent += `  ADS dy=${dy} relief=${relief} ironSight=${r.map((n) => n.toFixed(3))}`;
+      window.labReady = true;
+      throw new Error('ads view done'); // stop the normal 4-view render
+    }
+
+    const views = [
+      { dir: [1, 0, 0], label: 'right side' },
+      { dir: [-1, 0, 0], label: 'left side' },
+      { dir: [0.9, 0.45, 1.1], label: '3/4 rear' },
+      { dir: [0.35, 0.1, 1], label: 'shooter view' },
+    ];
+    const cams = views.map((v) => {
+      const cam = new THREE.PerspectiveCamera(30, (innerWidth / 2) / (innerHeight / 2), 0.01, 50);
+      const d = new THREE.Vector3(...v.dir).normalize();
+      cam.position.copy(center).addScaledVector(d, r / Math.tan(THREE.MathUtils.degToRad(15)) * 1.05);
+      cam.lookAt(center);
+      return cam;
+    });
+    const w = innerWidth / 2, h = innerHeight / 2;
+    cams.forEach((cam, i) => {
+      const x = (i % 2) * w, y = (1 - Math.floor(i / 2)) * h;
+      renderer.setViewport(x, y, w, h);
+      renderer.setScissor(x, y, w, h);
+      renderer.render(scene, cam);
+    });
+    window.labReady = true;
+  </script>
+</body>
+</html>

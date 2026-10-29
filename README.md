@@ -1,148 +1,139 @@
-# DOOM Clone — 3D
+# DOOM Clone — Tactical Warfare (v3.0)
 
-A browser-based 3D multiplayer shooter with a Call-of-Duty-style lobby
-(pick a weapon, a skin, and a map, then deploy) — played directly between
-two machines on your own network, no third-party relay or tunnel service
-involved.
+A browser-based 3D multiplayer military shooter with a full main menu
+(operator customisation with a live 3D preview, armory, settings, map
+select). You play it directly between machines on your own network, with
+no third-party relay or tunnel service involved.
 
-- **Rendering**: real 3D via [Three.js](https://threejs.org) (loaded from
-  a CDN, no build step or bundler) — an actual scene graph, WebGL
-  rendering, lighting and shadows, not a 2D raycasting trick.
-- **Maps**: three maps, each 240x240 units, built from code (no external
-  model/texture files to source, license, or ship):
-  - **Forest Outpost** (PvP) — ~220 layered-canopy trees, clustered rock
-    formations, and a dense instanced grass field.
-  - **Ironvale Industrial** (PvP) — a complete factory district with
-    enterable warehouses, loading yards, tanks, pipe racks, chimneys,
-    cargo containers, roads, street lighting, and a workers' village. The
-    village has eight enterable furnished homes, gardens, a shared green,
-    street furniture, trees, and animated civilian residents.
-    A connected city street adds three mixed-use buildings with enterable
-    shops, accessible second floors, working exterior staircases, balconies,
-    rooftop equipment, parked cars, pavements, and additional pedestrians.
-  - **Outbreak Facility** (co-op Zombies) — the same industrial district
-    re-themed with quarantine signage and red emergency lighting, where you and your
-    friend fight off endless rounds of server-simulated zombies instead
-    of each other. See "Zombies mode" below.
-  - The match's map is locked in by whichever player deploys first;
-    anyone who joins after that plays on the already-chosen map.
-- **Lobby**: pick your starting weapon, your skin, accent color, and
-  headgear (a solid color / simple shape — not a textured camo pattern or
-  a modeled cosmetic item, see "Honest scope" below), and your preferred
-  map before deploying.
-- **Players are visible**: other players render as an articulated
-  low-poly humanoid (torso, head, swinging arms and legs, built from
-  real body proportions — not a single capsule) in their chosen skin and
-  accent colors with optional headgear, a name tag that always faces the
-  camera, and a visible thrust flame while flying.
-- **Controls**: WASD **or the arrow keys** both work for movement.
-- **Weapons** (8 total, switch with `1`-`8`, the scroll wheel, or `T` to
-  jump straight to the Rocket Launcher): every weapon is unlocked and
-  fully kitted out for every player from the moment they spawn — nothing
-  to buy, nothing to grind. Pistol, Shotgun, Chaingun, and Rocket
-  Launcher are hand-built primitive geometry; **AK-47, M4A1-S, MP5, and
-  AWP** are real `.glb` 3D models (true-to-life dimensions and
-  proportions — an AWP really is ~1.15 m long here) sourced from the
-  open-source [Tiny Strike](https://github.com/guyz/tinystrike) project
-  (MIT/ISC) — see `public/assets/weapons/LICENSE` and
-  `public/js/weapons/LICENSE` for full attribution. Each loads once and is
-  cached (switching back to a gun you've already equipped is instant), and
-  falls back to a simple placeholder if a model ever fails to load so a
-  bad file can't crash the match. The Rocket Launcher is a real traveling
-  projectile that detonates in an area-of-effect explosion wherever it
-  lands — every other weapon is instant hitscan.
-- **Inventory**: press `Tab` to open your loadout and click any weapon to
-  equip it instantly.
-- **Flight**: double-tap Space (or press `F`) to toggle flight on/off,
-  completely unlimited — no fuel, no height cap. While flying, hold Space
-  to climb and release to hover in place; double-tap Space again to drop
-  back into normal gravity.
-- **Movement**: WASD with acceleration/friction for a weighted feel,
-  Shift to sprint, mouse-look.
-- **Vertical exploration**: city stairs use elevation-aware movement and
-  collision, so you can walk to upper floors and balconies and fall naturally
-  when stepping off a raised surface.
-- **Scoring**: kills are tracked server-side and shown as a live,
-  rank-sorted scoreboard; a banner announces frags as they happen.
-- **Quality of life**: your name, server address, and loadout are
-  remembered in your browser (`localStorage`) between visits.
-- **Easter eggs**: a hidden area to find (tracked separately from kills,
-  like the original games' "Secrets" stat), plus classic Doom cheat-code
-  nods — type `IDDQD`, `IDKFA`, or `IDCLIP` while playing for a
-  nostalgic banner (cosmetic only, by design).
-- **Multiplayer**: a small Node.js server relays player positions
-  (including height, so flight is visible to others), shots, rocket
-  flight and explosions, hits, kills and respawns between connected
-  browsers over WebSockets.
+## What's in v3.0
 
-## Zombies mode
+- **Rendering**: [Three.js](https://threejs.org) 0.170 (loaded from a CDN,
+  no build step).
+  - ACES tone mapping and a physically-based atmospheric sky with
+    image-based lighting.
+  - Soft shadows that follow the player.
+  - Optional bloom/film-grade post-processing on Ultra.
+- **Performance**:
+  - **Static batching:** thousands of static meshes are merged per material and map chunk.
+  - **Instancing:** the whole forest is GPU-instanced.
+  - **Light pool:** dozens of map lamps are served by a small fixed set of real lights, so shaders never recompile mid-match.
+  - **Fast hit detection:** shots and blast checks raycast against a BVH ([three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh)).
+  - **Graphics presets:** Low, Medium, High and Ultra.
+- **Forest Outpost rework**:
+  - **Ground:** a blended grass/dirt/leaf-litter surface with normal mapping, dirt trails between points of interest, and trampled clearings.
+  - **Vegetation:** pines, broadleaf trees and undergrowth, plus wind-blown grass meadows.
+  - **Cover:** boulders, and fallen logs you can vault.
+  - **Boundary:** a dense treeline fading into the fog in place of the old wall.
+- **Movement**:
+  - Weighty acceleration, sprint (forward only, lowers the weapon) and a realistic jump.
+  - **Crouch** (C): slower, quieter, more accurate.
+  - Head bob, landing dip, strafe lean.
+  - Flight is still there on F.
+- **Aiming and gunplay**:
+  - **Mouse input:** raw input (no OS acceleration), adjustable sensitivity, ADS sensitivity and FOV.
+  - **Aim down sights:** right click, with per-weapon zoom, sights lined up on the weapon and a red-dot reticle.
+  - **Recoil:** per-weapon vertical/horizontal recoil with recovery.
+  - **Spread:** hip-fire spread grows when moving or jumping and shrinks when crouched, shown live by a dynamic crosshair.
+  - **Damage:** headshots ×2.2, limbs ×0.8, damage falls off with range.
+  - **Ammo:** magazines and reloading (R), scavenging a magazine on each kill.
+- **Realistic weapons**: every gun is a detailed procedural model built to real-world dimensions from hundreds of real parts.
+  - **The guns:** Glock pistol, Remington 870-style pump shotgun with a side-saddle, XM556 microgun with a belt-fed ammo can, RPG-7 with a PGO-7 optic and PG-7V warhead, AK-47, M4A1-S with a red dot, MP5, and an AWP with a full scope.
+  - **Surfaces:** shaders show worn bright edges, grime in crevices and occlusion in recesses, plus fine surface grain (parkerized steel, anodised aluminium, stippled polymer, wood grain).
+  - **Moving parts:** slides and bolts cycle, the shotgun pump and AWP bolt work after each shot, minigun barrels spin up, magazines drop out on reload, and the RPG warhead disappears after firing.
+  - **Aiming:** optics (M4A1 red dot, microgun reflex) put the reticle on the eye axis; iron-sighted guns (Glock, M870, AK-47, MP5, RPG-7) were tuned one by one in the weapon lab (`?ads=1`) so the front post sits in the rear notch on the aim point.
+  - **UI:** the armory shows a studio render of every gun plus a rotating 3D model; the HUD, kill feed, killcam, loadout and weapons dictionary use images rendered from the real models.
+  - **Third person:** other soldiers carry the same models, merged for performance.
+  - **Credits:** the M4A1, AK-47, MP5, AWP and pistol models come from [Tiny Strike](https://github.com/guyz/tinystrike) / Claude-of-Duty (MIT/ISC, see `public/js/weapons/LICENSE`); the shotgun, minigun and RPG were built for this project on the same parts library.
+  - **Dev tool:** `/weapon-lab.html?w=<id>` renders any gun from four angles.
+- **CoD-style weapon view**:
+  - **Separate rendering:** the gun is drawn in its own pass with its own field of view (Weapon FOV: Narrow/Default/Wide), so it never clips into walls and never stretches at high FOV.
+  - **FOV settings:** FOV is horizontal like Call of Duty (60–120, default 90), with an ADS FOV option (Affected/Independent).
+  - **Lighting:** the gun is lit by the real sun direction and darkens in shade or indoors.
+  - **Firing effects:** muzzle flash with a light, muzzle smoke, and brass that ejects and bounces on the ground.
+  - **Animation:** spring-physics recoil, look sway and strafe tilt, figure-eight walk bob, ADS swing-in, tactical-sprint pose, and a multi-stage reload (mag out / mag in / charge).
+  - **Walls:** the muzzle lifts and the gun pulls back when you're close to a wall.
+- **Killstreaks** (kept until used, earned per life):
+  - **UAV** (3 kills, Z): a drone circles the map and pings every enemy onto your team's radar every 2 s for 30 s. Enemies see "ENEMY UAV OVERHEAD".
+  - **Airstrike** (5 kills, X): pull out a rugged tablet, which opens a live satellite feed. Pan with the mouse, zoom with the scroll wheel, see thermal contacts and the bomb corridor, then click to confirm. A strike jet flies over and drops six bombs on real ballistic arcs. Everyone sees and hears the jet.
+- **Frag grenades** (G): hold to cook, release to throw.
+  - Real bouncing/rolling physics off ground, trees, walls and obstacles.
+  - Blast damage is blocked by cover.
+  - On-screen warning when a grenade lands near you; you can kill yourself with one.
+- **Killcam and kill feed**:
+  - **Kill feed:** every client sees every kill — killer, weapon, headshot, victim.
+  - **Damage indicators:** a red arc on screen points to whoever is shooting you.
+  - **Killcam:** on death you go down in first person turned toward your killer, then watch a replay of the last seconds from the killer's eyes.
+  - **The replay is the real match:** every soldier is where they actually were and every tracer that was actually fired is shown, your own body drops, and the final moment plays in slow-mo.
+  - **Killer card:** name, weapon, distance and the killer's remaining health.
+- **Soldiers**:
+  - Jointed bodies with knees and elbows, arms that hold the weapon (two-bone IK), and a plate carrier, pouches, backpack, boots and gloves.
+  - Camo uniforms: woodland, desert, multi-terrain, urban/arctic digital, tiger stripe, gold, plus solid colours.
+  - Headgear: helmet, helmet + NVG, cap or beanie.
+  - Animation: upper body follows the player's aim, crouch pose, death fall.
+- **Smooth multiplayer**: 30 Hz updates. Remote players are interpolated 100 ms behind real time, so they glide instead of teleporting.
+- **Realistic rules**:
+  - **Health:** regenerates after 5 s out of combat.
+  - **Spawns:** you spawn away from enemies.
+  - **Radar:** enemies only show up when they fire an unsuppressed weapon (the M4A1-S and MP5 stay hidden).
+  - **Footsteps:** positional; crouching makes you silent.
+- **Audio**: synthesised, spatialised sound for gunshots (distance-muffled), explosions, footsteps, reloads, hitmarkers, grenade pins. There are no audio files to license.
 
-Pick **Outbreak Facility** in the map selector for co-op survival instead
-of PvP:
+## Controls
 
-- Zombies are fully **simulated by the server** (not any one player's
-  computer), so everyone sees the exact same zombies in the exact same
-  places — this is the one part of the game where the server does more
-  than relay messages, specifically so positions can't be faked.
-- Rounds escalate: each round has more zombies with more health than the
-  last. Clearing a round starts an 8-second intermission before the next.
-- Zombies path straight toward the nearest living player and melee them
-  on contact — there's no line-of-sight check, so don't expect them to
-  respect cover; this is a deliberately simple AI, not a pathfinding engine.
-- No friendly fire — your shots only ever hit zombies on this map.
-- There's no down-and-revive mechanic, perks, Pack-a-Punch, or a Mystery
-  Box — dying just respawns you, same as in PvP. This is a genuine
-  round-based horde mode, not a feature-complete recreation of a specific
-  Call of Duty Zombies map.
+| Key | Action |
+| --- | --- |
+| WASD / arrows | Move |
+| Shift | Sprint |
+| Space | Jump (climb while flying) |
+| C | Crouch toggle (descend while flying) |
+| F | Toggle flight |
+| Mouse / Left click | Aim / fire |
+| Right click | Aim down sights (AWP: scope) |
+| R | Reload |
+| G | Frag grenade (hold to cook, release to throw) |
+| 1–8 / scroll | Switch weapon |
+| T | Rocket launcher |
+| Z | UAV (3-kill streak) |
+| X | Airstrike tablet / satellite view (5-kill streak) |
+| Ctrl+T (or type HELPME) | Cheat: grants a UAV + airstrike, max ammo and grenades. Ctrl+T only reaches the game in fullscreen (Chrome/Edge); HELPME works everywhere |
+| Tab / I / U | Loadout / help / weapons dictionary |
 
-## Honest scope (read this before expecting a AAA game)
+## Maps
 
-This is a real, working 3D multiplayer shooter — not a mockup — but it
-is not, and was never going to be, an actual copy of Call of Duty:
+- **Forest Outpost** (PvP): reworked forest with three overgrown factories,
+  watchtowers, a climbable tower, campsites, ruins and cabins.
+- **Ironvale Industrial** (PvP): a factory district with enterable
+  warehouses, a workers' village with animated residents, and a
+  multi-level city street.
+- **Outbreak Facility**: the industrial district re-themed with red
+  emergency lighting.
+- **Dead Woods** (zombie survival): the forest at night — moonlight, thick
+  fog, firelight, lightning and a horror soundscape. Waves of realistic
+  zombies (shambling walkers, and sprinting runners from wave 2) spawn out of
+  sight and hunt you down. Your weapon has a flashlight (L toggles it).
+  Ally bots fight the horde with you.
 
-- **Character models are articulated low-poly primitives** (a boxy torso,
-  a sphere head, cylinder limbs with real human proportions and a basic
-  walk-cycle animation) — not detailed, textured, or facially animated
-  human models. Fully detailed networked characters would require a larger
-  art and animation pipeline, so remote combatants remain lightweight for
-  multiplayer performance.
-- **Village civilians are the exception**: they use the rigged and animated
-  Cesium Man glTF model from Khronos Group's Sample Assets through Three.js
-  `GLTFLoader`, `SkeletonUtils`, and `AnimationMixer`. The model is bundled
-  locally under CC BY 4.0; full attribution is in
-  `public/assets/characters/LICENSE.md`.
-- **Trees, rocks, and grass are procedurally built from geometry** (layered
-  conifers, branching multi-crown deciduous trees, clustered dodecahedra,
-  and thousands of tapered GPU-instanced grass blades) using real-world
-  proportions and structure as a reference — not photo-scanned foliage.
-- **Skins, accents, and headgear are solid colors / simple primitive
-  shapes** (e.g. a helmet is a half-sphere), not textured camouflage
-  patterns or modeled cosmetic items.
-- **Weapon viewmodels are more detailed primitive assemblies** (triggers,
-  sights, magazines, stocks, ammo belts) than before, which reads as more
-  gun-like — but they're still built from boxes/cylinders/cones, not
-  textured 3D-scanned firearm models.
-- **No real Call of Duty assets, maps, or content were used or copied** —
-  everything here is built from primitive geometry in code. Using actual
-  COD assets would be a copyright violation.
-- **Hit damage is self-reported by each client**, not validated by the
-  server — consistent with this project's "thin relay, no anti-cheat"
-  design. Fine for friends playing together; not tamper-proof.
-- **No killstreaks, perks, prestige, battle pass, or other
-  meta-progression systems, and no economy to grind** — every weapon is
-  already free and fully kitted out for everyone, so this is a
-  straightforward deathmatch, not a progression loop.
-- The map is chosen by whoever deploys first (see above) — there's no
-  lobby voting system.
+The match's map is locked in by whichever player deploys first. AI bots
+(allies/enemies) can be added from the lobby.
 
-What you *do* get: real 3D terrain you can walk around in (at 5.76x the
-previous map's area), trees/rocks/crates you physically collide with,
-grass fields, unlimited flight, visible teammates/opponents with actual
-limbs in colors you chose, every weapon free and unlocked from the start
-(including a real rocket launcher with a traveling projectile and an
-area-of-effect explosion), an inventory screen, a proper pre-match
-loadout screen, and working multiplayer kill tracking — a genuine
-small-scale FPS, built honestly.
+### AI
+
+Bots and zombies are simulated on the server (`server/ai.js`) against the
+map's real collision geometry (`server/worldGeo.js`). The first client in a
+match uploads the geometry and the server caches it in `server/geo-cache/`.
+Bots only see and shoot through clear lines of sight, and their missed
+tracers stop at walls. Both bots and zombies walk A* paths around buildings,
+trees and rocks. Bots react with a human delay, turn at a human speed, settle
+their aim while tracking, fire rifles in bursts and reload. When they lose you
+they push to where they last saw you, search, then patrol. They also react to
+gunfire and to being shot.
+
+## Honest scope
+
+- **No AAA art assets:** soldiers, trees and buildings are built from code; they are not photo-scanned assets. The AK-47, M4A1-S, MP5 and AWP first-person models are real `.glb` models from the open-source [Tiny Strike](https://github.com/guyz/tinystrike) project (see `public/assets/weapons/LICENSE`).
+- **No anti-cheat:** hit damage is reported by the shooter's client, not validated by the server. Fine for friends, not tamper-proof.
+- **AI stays on the ground:** bots and zombies don't climb towers or use upper floors.
+- **No real Call of Duty assets:** no assets, maps or content from Call of Duty were used.
 
 ## 1. Install
 
@@ -224,7 +215,15 @@ doom/
     ├── css/style.css
     └── js/
         ├── constants.js    Weapons, skins, maps, movement tuning
-        ├── localPlayer.js  Local player physics: movement, gravity, collision
+        ├── localPlayer.js  Local player physics: movement, jump, crouch, collision grid
+        ├── forest.js       Forest Outpost ground, instanced forest, grass
+        ├── perf.js         Quality presets, static batching, BVH, light pool, post FX
+        ├── grenades.js     Frag grenade physics
+        ├── viewmodel.js    First-person weapon pass: weapon FOV, lighting, muzzle flash, brass
+        ├── aircraft.js     Strike jet, bombs, UAV drone, tactical tablet
+        ├── weaponModels.js Builds/caches the procedural guns (first- and third-person)
+        └── weapons/        Procedural weapon library: parts, models/, surfaces.js (wear shaders)
+        ├── audio.js        Procedural positional audio
         ├── world.js        Builds the 3D scene for a chosen map
         ├── playerModel.js  Visible representation of other players
         ├── weaponView.js   First-person weapon viewmodels

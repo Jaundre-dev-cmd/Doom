@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Character Lab</title>
+  <style>html, body { margin: 0; height: 100%; background: #2a2e33; overflow: hidden; font: 12px monospace; color: #fff; } #info { position: fixed; left: 8px; top: 6px; }</style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="info"></div>
+  <!-- Dev tool: renders the player soldier in several poses.
+       character-lab.html?skin=woodland&head=helmet -->
+  <script type="module">
+    import * as THREE from 'three';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+    import { createPlayerModel, createZombieModel } from './js/playerModel.js';
+    import { preloadHumanSoldier, prepareZombieAssets, HEAD_OFFSET, GLASSES, NECK } from './js/humanSoldier.js';
+    import { SKINS, ACCENTS } from './js/constants.js';
+
+    const params = new URLSearchParams(location.search);
+    if (params.get('gl')) Object.assign(GLASSES, JSON.parse(params.get('gl')));
+    if (params.get('nk')) Object.assign(NECK, JSON.parse(params.get('nk')));
+    if (params.get('ho')) HEAD_OFFSET.fromArray(params.get('ho').split(',').map(Number));
+    await preloadHumanSoldier();
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.shadowMap.enabled = true;
+    renderer.setScissorTest(true);
+    document.body.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x8a9aa8);
+    scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.5;
+    const sun = new THREE.DirectionalLight(0xfff0dd, 2.6);
+    sun.position.set(3, 6, 4);
+    sun.castShadow = true;
+    scene.add(sun, new THREE.HemisphereLight(0xc8d6e6, 0x40382c, 0.7));
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: 0x55604a }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    if (params.get('zombie')) {
+      // Zombies: ?zombie=1 [&night=1] [&face=1] [&seed=N]
+      const night = !!params.get('night');
+      const flashlight = new THREE.SpotLight(0xfff2dc, 0, 25, 0.38, 0.5, 1.2);
+      flashlight.castShadow = true;
+      scene.add(flashlight, flashlight.target);
+      if (night) {
+        // Moonlit night: dim blue key light, near-black sky, a flashlight per view.
+        scene.background = new THREE.Color(0x05070c);
+        scene.fog = new THREE.FogExp2(0x05070c, 0.06);
+        scene.environmentIntensity = 0.04;
+        sun.color.set(0x7088c0);
+        sun.intensity = 0.35;
+        scene.children.find((c) => c.isHemisphereLight).intensity = 0.05;
+        ground.material.color.set(0x2a3024);
+        flashlight.intensity = 60;
+      }
+      const seed0 = Number(params.get('seed') || 0);
+      if (params.get('ztex')) {
+        // The painted zombie textures themselves (head + uniform per look).
+        renderer.domElement.remove();
+        document.body.style.overflow = 'auto';
+        for (const m of prepareZombieAssets()) {
+          for (const c of [m.head.map.image, m.body.map.image]) {
+            c.style.cssText = 'width:260px;height:260px;margin:2px';
+            document.body.appendChild(c);
+          }
+        }
+        window.labReady = true;
+        throw new Error('ztex done');
+      }
+      const zombies = [];
+      const makeZ = (kind, seed, x, angle, speed, steps, attackAt = -1) => {
+        const z = createZombieModel({ id: 'lab' + seed, kind, seed });
+        z.setPosition(x, 0, 0, angle);
+        for (let i = 0; i < steps; i++) {
+          if (i === attackAt) z.attack();
+          z.animate(1 / 30, speed, false);
+        }
+        scene.add(z.group);
+        zombies.push(z);
+        return z;
+      };
+      const shoot = (views, cols, rows) => {
+        const w = innerWidth / cols, h = innerHeight / rows;
+        views.forEach((v, i) => {
+          const cam = new THREE.PerspectiveCamera(v.fov || 35, w / h, 0.05, 100);
+          cam.position.set(...v.pos);
+          cam.lookAt(...v.at);
+          flashlight.position.set(v.pos[0] + 0.3, v.pos[1] - 0.1, v.pos[2]);
+          flashlight.target.position.set(...v.at);
+          flashlight.target.updateMatrixWorld();
+          // Same illumination at any range (a torch held by the viewer).
+          if (night) flashlight.intensity = 6 * flashlight.position.distanceToSquared(flashlight.target.position);
+          const x = (i % cols) * w, y = (rows - 1 - Math.floor(i / cols)) * h;
+          renderer.setViewport(x, y, w, h);
+          renderer.setScissor(x, y, w, h);
+          renderer.render(scene, cam);
+        });
+      };
+      if (params.get('perf')) {
+        // Cost of painting the looks, and of animating 20 zombies per frame.
+        let t0 = performance.now();
+        prepareZombieAssets();
+        const paint = performance.now() - t0;
+        t0 = performance.now();
+        for (let i = 0; i < 20; i++) makeZ(i % 3 ? 'walker' : 'runner', i, (i % 5) * 2 - 4, i, 0, 0);
+        const build = performance.now() - t0;
+        for (let f = 0; f < 30; f++) for (const z of zombies) z.animate(1 / 60, 1.2, f % 20 === 0);
+        t0 = performance.now();
+        const frames = 120;
+        for (let f = 0; f < frames; f++) for (const z of zombies) z.animate(1 / 60, 1.2, f % 40 === 0);
+        const per = (performance.now() - t0) / frames;
+        document.getElementById('info').textContent = `paint ${paint.toFixed(0)} ms | build 20: ${build.toFixed(0)} ms | animate 20: ${per.toFixed(2)} ms/frame`;
+        window.labReady = true;
+        throw new Error('zombie done');
+      }
+      if (params.get('face')) {
+        // The three faces, close up from the front and three-quarter.
+        for (let k = 0; k < 3; k++) makeZ('walker', seed0 + k, k * 3, Math.PI * 0.85, 0, 20);
+        const views = [];
+        for (let k = 0; k < 3; k++) {
+          const hd = zombies[k].hitboxes[0].getWorldPosition(new THREE.Vector3());
+          hd.y += 0.08;
+          views.push({ pos: [hd.x - Math.sin(Math.PI * 0.85) * 0.75, hd.y + 0.02, hd.z - Math.cos(Math.PI * 0.85) * 0.75], at: hd.toArray(), fov: 30 });
+        }
+        for (let k = 0; k < 3; k++) {
+          const hd = zombies[k].hitboxes[0].getWorldPosition(new THREE.Vector3());
+          hd.y += 0.08;
+          const a = Math.PI * 0.85 + 0.8;
+          views.push({ pos: [hd.x - Math.sin(a) * 0.75, hd.y + 0.02, hd.z - Math.cos(a) * 0.75], at: hd.toArray(), fov: 30 });
+        }
+        shoot(views, 3, 2);
+        document.getElementById('info').textContent = 'zombie faces: looks 0/1/2 front | three-quarter' + (night ? ' (night)' : '');
+      } else {
+        makeZ('walker', seed0, -4, Math.PI * 0.8, 1.1, 37);
+        makeZ('walker', seed0 + 4, -1.5, Math.PI * 1.15, 0, 50);
+        makeZ('runner', seed0 + 2, 1, Math.PI * 0.75, 5, 23);
+        makeZ('walker', seed0 + 7, 3.5, Math.PI * 0.85, 0, 40, 32);
+        const dead = makeZ('walker', seed0 + 5, 6, Math.PI * 0.7, 1, 20);
+        dead.die();
+        for (let i = 0; i < 45; i++) dead.animate(1 / 30, 0, false);
+        const runnerAtk = makeZ('runner', seed0 + 8, 8.5, Math.PI * 0.9, 0, 40, 34);
+        shoot([
+          { pos: [-4, 1.4, 3.0], at: [-4, 1.0, 0] },
+          { pos: [-1.5, 1.4, 3.0], at: [-1.5, 1.0, 0] },
+          { pos: [1, 1.3, 3.2], at: [1, 0.9, 0] },
+          { pos: [5.0, 1.5, 2.6], at: [3.5, 1.0, 0] },
+          { pos: [5.2, 2.4, 3.4], at: [5.3, 0.2, 0.4] },
+          { pos: [7.3, 1.5, 2.6], at: [8.5, 1.0, 0] },
+        ], 3, 2);
+        document.getElementById('info').textContent = 'walker walking | walker idle | runner | walker attack | dead | runner attack' + (night ? ' (night)' : '');
+      }
+      window.labReady = true;
+      throw new Error('zombie done');
+    }
+
+    const skin = SKINS.find((s) => s.id === (params.get('skin') || 'woodland'));
+    const accent = ACCENTS[0];
+    const head = params.get('head') || 'helmet';
+    const make = (weapon, x, angle, crouch, speed, pitch = 0) => {
+      const m = createPlayerModel(skin, 'Soldier', { accentColor: accent.color, headgear: head, weapon });
+      m.setNameVisible(false);
+      m.setPosition(x, 0, 0, angle);
+      m.setPitch(pitch);
+      for (let i = 0; i < 30; i++) m.animate(1 / 30, speed > 0.3, crouch, speed);
+      scene.add(m.group);
+      return m;
+    };
+    make('ak47', -3, Math.PI * 0.8, false, 0);
+    make('m4a1', 0, Math.PI * 0.5, false, 0, 0.15);
+    make('pistol', 3, Math.PI * 1.2, true, 0);
+    make('awp', 6, Math.PI * 0.6, false, 3.5);
+
+    if (params.get('visor') === '0') scene.traverse((o) => { if (o.isMesh && /visor/i.test(o.name)) o.visible = false; });
+    if (params.get('face')) {
+      // Close-ups of the head from the front and side.
+      const w2 = innerWidth / 3;
+      const cams = [0.25, 1.3, Math.PI + 0.6].map((d) => [-3 - Math.sin(Math.PI * 0.8 + d) * 0.7, 1.62, -Math.cos(Math.PI * 0.8 + d) * 0.7]);
+      cams.forEach((p, i) => {
+        const cam = new THREE.PerspectiveCamera(30, w2 / innerHeight, 0.05, 100);
+        cam.position.set(...p);
+        cam.lookAt(-3, 1.6, 0);
+        renderer.setViewport(i * w2, 0, w2, innerHeight);
+        renderer.setScissor(i * w2, 0, w2, innerHeight);
+        renderer.render(scene, cam);
+      });
+      window.labReady = true;
+      throw new Error('face done');
+    }
+    const views = [
+      { pos: [-3, 1.4, 3.2], at: [-3, 1.0, 0] },
+      { pos: [0, 1.3, 3.2], at: [0, 1.0, 0] },
+      { pos: [3, 1.2, 3.2], at: [3, 0.7, 0] },
+      { pos: [-2.3, 1.68, 0.9], at: [-3, 1.58, 0], fov: 22 },
+    ];
+    const w = innerWidth / 2, h = innerHeight / 2;
+    views.forEach((v, i) => {
+      const cam = new THREE.PerspectiveCamera(v.fov || 35, w / h, 0.05, 100);
+      cam.position.set(...v.pos);
+      cam.lookAt(...v.at);
+      const x = (i % 2) * w, y = (1 - Math.floor(i / 2)) * h;
+      renderer.setViewport(x, y, w, h);
+      renderer.setScissor(x, y, w, h);
+      renderer.render(scene, cam);
+    });
+    document.getElementById('info').textContent = 'AK idle (3/4) | M4 side, aiming up | pistol crouched | face close-up';
+    window.labReady = true;
+  </script>
+</body>
+</html>

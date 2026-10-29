@@ -1,16 +1,9 @@
-// ---------------------------------------------------------------------------
-// Ported from Tiny Strike (https://github.com/guyz/tinystrike), MIT License,
-// Copyright (c) 2026 Guy Zyskind.
-// Tiny Strike's weapon-rendering code (src/gfx/) is itself ported from
-// Claude-of-Duty (https://github.com/mshumer/Claude-of-Duty), MIT License,
-// Copyright (c) 2026 mshumer.
-// See public/js/weapons/LICENSE for the full license text (required by MIT).
-// Adapted here to run standalone (no shared procedural PBR texture library —
-// this project supplies no `materialLibrary`, so WeaponMaterials uses its own
-// built-in plain-material fallback path; see materials.js).
-// ---------------------------------------------------------------------------
+// Ported from Tiny Strike (https://github.com/guyz/tinystrike, src/gfx/), which ported it
+// from Claude-of-Duty (https://github.com/mshumer/Claude-of-Duty). MIT/ISC licensed —
+// see public/js/weapons/LICENSE for both notices.
 
 import * as THREE from 'three';
+import { createWeaponSurface } from './surfaces.js';
 
 /**
  * The weapon material set.
@@ -937,7 +930,9 @@ export class WeaponMaterials {
     let m = this.cache.get(key);
     if (m) return m;
     const def = WEAPON_MATERIALS[key];
-    if (def && this.lib) {
+    // This project has no upstream texture library: `lib` only supplies
+    // bakeMasks, so every key resolves through _fallback (surfaces.js).
+    if (def && this.lib && typeof this.lib.get === 'function') {
       m = this.lib.get(def[0], def[1]);
       // The viewmodel is drawn with its own near plane; nothing about it should
       // write into the world's shadow cascades.
@@ -957,42 +952,11 @@ export class WeaponMaterials {
     return m;
   }
 
-  /**
-   * Used only if the materials subsystem is unavailable (standalone harness)
-   * — which, in this project, is always, since no shared procedural PBR
-   * `materialLibrary` is supplied. Extended (relative to the original) with
-   * a color/finish per real `WEAPON_MATERIALS` key instead of a crude
-   * metal/plastic 2-bucket split, so the correct real-world AK-47 geometry
-   * still reads as distinct materials (wood furniture, steel, brass, etc.)
-   * even without the full baked-texture system.
-   */
+  /** Used only if the materials subsystem is unavailable (standalone harness). */
   _fallback(key) {
     let m = this._fallbacks.get(key);
     if (m) return m;
-
-    const presets = {
-      alu: { color: 0x3a3d42, roughness: 0.45, metalness: 1 },
-      alu_fine: { color: 0x44474c, roughness: 0.3, metalness: 1 },
-      steel: { color: 0x2e3135, roughness: 0.4, metalness: 1 },
-      steel_soot: { color: 0x202224, roughness: 0.6, metalness: 1 },
-      steel_bright: { color: 0x565a5f, roughness: 0.22, metalness: 1 },
-      steel_black: { color: 0x14161a, roughness: 0.4, metalness: 1 },
-      brass: { color: 0xb08d3a, roughness: 0.32, metalness: 1 },
-      copper: { color: 0xa5673a, roughness: 0.3, metalness: 1 },
-      polymer: { color: 0x202224, roughness: 0.65, metalness: 0 },
-      polymer_tan: { color: 0x9b8862, roughness: 0.65, metalness: 0 },
-      wood: { color: 0x6b4a2e, roughness: 0.55, metalness: 0 },
-      rubber: { color: 0x1c1d1f, roughness: 0.85, metalness: 0 },
-      weather: { color: 0x2a2b2e, roughness: 0.8, metalness: 0 },
-      macro: { color: 0x2a2b2e, roughness: 0.7, metalness: 0 },
-      glove: { color: 0x2f2a26, roughness: 0.8, metalness: 0 },
-      glove_pad: { color: 0x26221f, roughness: 0.8, metalness: 0 },
-      glove_seam: { color: 0x1c1a18, roughness: 0.8, metalness: 0 },
-      sleeve: { color: 0x3a4a3a, roughness: 0.75, metalness: 0 },
-    };
-
-    const preset = presets[key] ?? { color: 0x2a2b2e, roughness: 0.72, metalness: 0 };
-    m = new THREE.MeshStandardMaterial(preset);
+    m = createWeaponSurface(key);
     this._fallbacks.set(key, m);
     this.owned.push(m);
     return m;

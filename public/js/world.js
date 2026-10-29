@@ -5,6 +5,18 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { Sky } from 'three/addons/objects/Sky.js';
+import { makeForestGround, makeForest, makeGrassMeadows } from './forest.js';
+import { makeCloudLayer } from './clouds.js';
+import { createTreeKit } from './foliage.js';
+import { makeForestStation } from './forestStation.js';
+import { makeForestCabin, makeForestWatchtower, makeForestCampsite } from './forestCabins.js';
+import { makeLookoutTower, makeSandbagBarricade, makeStoneRuin } from './forestLandmarks.js';
+import { chunkVegetation, updateCulling } from './vegetationLod.js';
+
+// Set by buildWorld for builders that need the quality preset / wind clock.
+let buildOptions = { quality: { grass: 1, shadows: true }, windUniform: { value: 0 } };
+import { applyWeathering } from './weathering.js';
 import { WORLD_SIZE, MAPS, SPAWN_POINTS } from './constants.js';
 
 // Deterministic pseudo-random generator (no dependency, reproducible map).
@@ -51,6 +63,50 @@ function makeSkyDome(topColor, bottomColor, radius = 400) {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'skydome';
   return mesh;
+}
+
+// Night sky for the survival map: a dark dome, a few thousand stars and a
+// hazy moon (all unlit, fog-free; drawn behind everything).
+function makeNightSky(moonDir) {
+  const group = new THREE.Group();
+  const dome = makeSkyDome(0x0b1424, 0x101620, 400);
+  group.add(dome);
+  const rng = makeRng(77);
+  const n = 2200;
+  const pos = new Float32Array(n * 3);
+  const col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    // Upper hemisphere only, denser toward the zenith.
+    const y = Math.pow(rng(), 0.6) * 0.95 + 0.05;
+    const a = rng() * Math.PI * 2;
+    const r = Math.sqrt(1 - y * y);
+    pos.set([Math.cos(a) * r * 380, y * 380, Math.sin(a) * r * 380], i * 3);
+    const b = 0.35 + rng() * rng() * 0.9;
+    col.set([b * (0.85 + rng() * 0.15), b * 0.92, b], i * 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const stars = new THREE.Points(g, new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, vertexColors: true, fog: false, transparent: true, opacity: 0.9, depthWrite: false }));
+  group.add(stars);
+  // Moon: a soft disc with a wide halo.
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+  grad.addColorStop(0, 'rgba(235,240,255,1)');
+  grad.addColorStop(0.16, 'rgba(220,228,245,1)');
+  grad.addColorStop(0.19, 'rgba(150,170,210,0.35)');
+  grad.addColorStop(0.45, 'rgba(90,110,160,0.12)');
+  grad.addColorStop(1, 'rgba(60,80,130,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 256);
+  const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), fog: false, depthWrite: false, transparent: true }));
+  moon.position.copy(moonDir).multiplyScalar(360);
+  moon.scale.setScalar(150);
+  group.add(moon);
+  group.userData.dome = dome;
+  return group;
 }
 
 // Procedural speckled surface texture (ground, concrete, bark, ...) —
@@ -108,58 +164,6 @@ function makeBarkTexture(base = '#5b3a22', size = 64) {
   return texture;
 }
 
-// --- Trees: a trunk plus a layered, tapering canopy (3 stacked cones)
-// instead of one cone, with a slight natural lean and size variation. ---
-function makeTree(x, z, rand, materials) {
-  const group = new THREE.Group();
-
-  const trunkHeight = 2.2 + rand() * 1.8;
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.3, trunkHeight, 8), materials.trunk);
-  trunk.position.y = trunkHeight / 2;
-  trunk.castShadow = true;
-  group.add(trunk);
-
-  let y = trunkHeight * 0.55;
-  let radius = 1.5 + rand() * 0.5;
-  for (let i = 0; i < 3; i++) {
-    const h = 1.6 - i * 0.2;
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(radius, h, 8), materials.canopy[i]);
-    cone.position.y = y + h / 2;
-    cone.castShadow = true;
-    group.add(cone);
-    y += h * 0.55;
-    radius *= 0.72;
-  }
-
-  const scale = 0.85 + rand() * 0.4;
-  group.position.set(x, 0, z);
-  group.rotation.z = (rand() - 0.5) * 0.08;
-  group.scale.setScalar(scale);
-  return { group, radius: 0.5 * scale };
-}
-
-// --- Rocks: a small irregular cluster of 2-4 low-poly boulders instead
-// of one perfect dodecahedron, for a more natural formation. ---
-function makeRockCluster(x, z, rand, material) {
-  const group = new THREE.Group();
-  const count = 2 + Math.floor(rand() * 3);
-  let maxR = 0;
-
-  for (let i = 0; i < count; i++) {
-    const size = 0.5 + rand() * 0.9;
-    maxR = Math.max(maxR, size);
-    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(size, 0), material);
-    rock.position.set((rand() - 0.5) * 1.2, size * 0.4, (rand() - 0.5) * 1.2);
-    rock.rotation.set(rand() * Math.PI, rand() * Math.PI, rand() * Math.PI);
-    rock.castShadow = true;
-    rock.receiveShadow = true;
-    group.add(rock);
-  }
-
-  group.position.set(x, 0, z);
-  return { group, radius: maxR * 1.3 };
-}
-
 // --- Grass: thousands of cross-billboard blades via GPU instancing (two
 // instanced planes per blade, crossed 90 degrees) — cheap to render in
 // bulk, purely decorative (no collision). ---
@@ -177,35 +181,6 @@ function makeGrassBladeGeometry(width, height) {
   return geometry;
 }
 
-function makeGrassField(half, rand, count = 6000) {
-  const group = new THREE.Group();
-
-  const bladeGeoA = makeGrassBladeGeometry(0.22, 0.6);
-  const bladeGeoB = bladeGeoA.clone();
-  bladeGeoB.rotateY(Math.PI / 2);
-
-  const material = new THREE.MeshStandardMaterial({ color: 0x3f7d3a, side: THREE.DoubleSide, roughness: 1 });
-  const meshA = new THREE.InstancedMesh(bladeGeoA, material, count);
-  const meshB = new THREE.InstancedMesh(bladeGeoB, material, count);
-  const dummy = new THREE.Object3D();
-
-  for (let i = 0; i < count; i++) {
-    const x = (rand() - 0.5) * (half * 2 - 6);
-    const z = (rand() - 0.5) * (half * 2 - 6);
-    dummy.position.set(x, 0, z);
-    dummy.rotation.set(0, rand() * Math.PI, 0);
-    dummy.scale.setScalar(0.7 + rand() * 0.8);
-    dummy.updateMatrix();
-    meshA.setMatrixAt(i, dummy.matrix);
-    meshB.setMatrixAt(i, dummy.matrix);
-  }
-  meshA.instanceMatrix.needsUpdate = true;
-  meshB.instanceMatrix.needsUpdate = true;
-
-  group.add(meshA, meshB);
-  return group;
-}
-
 function makeGrassPatch(cx, cz, width, depth, rand, count = 700, clearWidth = 0, clearDepth = 0) {
   const group = new THREE.Group();
   const lawnMat = new THREE.MeshStandardMaterial({ color: 0x517345, roughness: 1 });
@@ -221,6 +196,7 @@ function makeGrassPatch(cx, cz, width, depth, rand, count = 700, clearWidth = 0,
   const bladeMat = new THREE.MeshStandardMaterial({ color: 0x4d793f, side: THREE.DoubleSide, roughness: 1 });
   const meshA = new THREE.InstancedMesh(bladeGeoA, bladeMat, count);
   const meshB = new THREE.InstancedMesh(bladeGeoB, bladeMat, count);
+  meshA.userData.noRaycast = meshB.userData.noRaycast = true;
   const dummy = new THREE.Object3D();
   const color = new THREE.Color();
   for (let i = 0; i < count; i++) {
@@ -249,34 +225,6 @@ function makeGrassPatch(cx, cz, width, depth, rand, count = 700, clearWidth = 0,
   return group;
 }
 
-function makeDeciduousTree(x, z, rand, collidables) {
-  const group = new THREE.Group();
-  const bark = new THREE.MeshStandardMaterial({ map: makeBarkTexture('#60452f', 48), roughness: 1 });
-  const leafColors = [0x3e6c37, 0x4a7b3f, 0x557f43, 0x356332];
-  const trunkHeight = 3.7 + rand() * 1.2;
-  addBox(group, new THREE.CylinderGeometry(0.25, 0.42, trunkHeight, 9), bark, 0, trunkHeight / 2, 0);
-  for (let i = 0; i < 4; i++) {
-    const angle = i * Math.PI / 2 + rand() * 0.5;
-    const branch = addBox(group, new THREE.CylinderGeometry(0.09, 0.17, 2.1, 7), bark, Math.sin(angle) * 0.62, trunkHeight - 0.2, Math.cos(angle) * 0.62);
-    branch.rotation.z = Math.sin(angle) * 0.75;
-    branch.rotation.x = Math.cos(angle) * 0.75;
-  }
-  for (let i = 0; i < 7; i++) {
-    const angle = i / 7 * Math.PI * 2 + rand() * 0.35;
-    const radius = 1.15 + rand() * 0.55;
-    const leaves = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(radius, 2),
-      new THREE.MeshStandardMaterial({ color: leafColors[i % leafColors.length], roughness: 0.88 })
-    );
-    leaves.position.set(Math.sin(angle) * (0.7 + rand()), trunkHeight + 0.45 + rand() * 1.15, Math.cos(angle) * (0.7 + rand()));
-    leaves.scale.y = 0.85 + rand() * 0.35;
-    leaves.castShadow = true;
-    group.add(leaves);
-  }
-  group.position.set(x, 0, z);
-  collidables.push({ x, z, radius: 0.55 });
-  return group;
-}
 
 // Adds a line of circular collision points along a wall segment — our
 // collision system (localPlayer.js) only understands circles, so a
@@ -1282,8 +1230,23 @@ function addIndustrialGround(scene) {
   }
 }
 
-function addIndustrialDistrict(scene, collidables, walkableSurfaces, isOutbreak) {
+function addIndustrialDistrict(scene, collidables, walkableSurfaces, isOutbreak, structures) {
   addIndustrialGround(scene);
+
+  if (structures) {
+    // Register all major factories and buildings for minimap blueprint rendering
+    structures.push({ x: 0, z: 0, w: 38, d: 38, name: isOutbreak ? 'RECON LAB 01' : 'CENTRAL ASSEMBLY', type: 'factory' });
+    structures.push({ x: -70, z: -25, w: 38, d: 38, name: isOutbreak ? 'QUARANTINE ZONE B' : 'IRONVALE METALWORKS', type: 'factory' });
+    structures.push({ x: 70, z: 25, w: 38, d: 38, name: isOutbreak ? 'BIO-HAZARDS STORAGE' : 'FREIGHT TERMINAL', type: 'factory' });
+    structures.push({ x: 37, z: -69, w: 30, d: 20, name: 'MACHINE SHOP', type: 'industrial_hall' });
+    structures.push({ x: 70, z: -25, w: 28, d: 24, name: isOutbreak ? 'INFECTED ASSEMBLY' : 'ASSEMBLY BLOCK B', type: 'industrial_hall' });
+    structures.push({ x: -37, z: -69, w: 30, d: 20, name: isOutbreak ? 'HAZMAT DISPOSAL' : 'CHEMICAL REFINERY', type: 'industrial_hall' });
+    structures.push({ x: -37, z: 25, w: 24, d: 20, name: isOutbreak ? 'GRID BACKUP' : 'POWER SUBSTATION', type: 'industrial_hall' });
+    
+    structures.push({ x: -48, z: -99, w: 19, d: 16, name: isOutbreak ? 'EVACUATION BLOCK' : 'FOUNDRY LOFTS', type: 'city_building' });
+    structures.push({ x: 63, z: -99, w: 20, d: 18, name: isOutbreak ? 'RESTRICTED MARKET' : 'MARKET ROW', type: 'city_building' });
+    structures.push({ x: 18, z: -102, w: 17, d: 14, name: isOutbreak ? 'CIVIC CONTROL' : 'CIVIC EXCHANGE', type: 'city_building' });
+  }
 
   // Big Central Factory
   scene.add(makeCentralFactory(0, 0, collidables, walkableSurfaces, isOutbreak, false));
@@ -1414,7 +1377,12 @@ function addIndustrialDistrict(scene, collidables, walkableSurfaces, isOutbreak)
     { x: 16, z: 61, width: 6.6, depth: 5.6, doorSide: 'south', wallColor: 0x8d8174, roofColor: 0x493d38, fabricColor: 0x4e6772 },
     { x: 48, z: 61, width: 7.4, depth: 6.2, doorSide: 'south', wallColor: 0x82907e, roofColor: 0x3d493c, rugColor: 0x77554b },
   ];
-  for (const home of homes) scene.add(makeHouse(home.x, home.z, collidables, home));
+  for (const home of homes) {
+    scene.add(makeHouse(home.x, home.z, collidables, home));
+    if (structures) {
+      structures.push({ x: home.x, z: home.z, w: home.width, d: home.depth, name: 'HOME', type: 'house' });
+    }
+  }
 
   const villageRand = makeRng(8172);
   scene.add(makeGrassPatch(0, 98, 18, 19, villageRand, 900));
@@ -1424,7 +1392,14 @@ function addIndustrialDistrict(scene, collidables, walkableSurfaces, isOutbreak)
     [-72, 96], [-42, 101], [-13, 98], [12, 101], [42, 102], [71, 96],
     [-64, 63], [-32, 59], [0, 61], [32, 59], [65, 62], [-8, 89], [9, 88],
   ];
-  for (const [tx, tz] of villageTrees) scene.add(makeDeciduousTree(tx, tz, villageRand, collidables));
+  // Same realistic broadleaf trees as the forest map.
+  const villageKit = createTreeKit(buildOptions);
+  for (const [tx, tz] of villageTrees) {
+    const scale = 0.85 + villageRand() * 0.25;
+    villageKit.addBroadleaf(tx, tz, scale, villageRand);
+    collidables.push({ x: tx, z: tz, radius: 0.38 * scale + 0.05 });
+  }
+  scene.add(villageKit.build());
   scene.add(makeVillageAmenities(0, 98));
 
   // Street furniture and utility rhythm visually tie the homes to the plant.
@@ -1530,16 +1505,6 @@ function createVillageNPCs(scene) {
       }
     },
   };
-}
-
-// Helper to quickly build boxes with relative group transforms
-function addBox(group, geom, mat, x, y, z) {
-  const mesh = new THREE.Mesh(geom, mat);
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  group.add(mesh);
-  return mesh;
 }
 
 function makeCentralFactory(x, z, collidables, walkableSurfaces, isOutbreak, isForest, nameOverride = '') {
@@ -2073,7 +2038,7 @@ function makeParisTower(x, z, collidables, walkableSurfaces) {
   // Spotlight Sweep
   const spot = new THREE.SpotLight(0xffffff, 16.0, 130, Math.PI / 9, 0.45, 1.2);
   spot.position.set(0, 55.3, 0);
-  spot.castShadow = true;
+  spot.castShadow = false; // a second full-scene shadow pass for one sweeping light cost more than it was worth
   spot.shadow.mapSize.set(512, 512);
   spot.shadow.bias = -0.0015;
 
@@ -2411,113 +2376,162 @@ function makeBrickRuin(x, z, angle, collidables) {
 }
 
 export function getForestTerrainHeight(x, z) {
-  // Make the entire forest map completely flat so the grass, trees, buildings, and combat gameplay work perfectly without bumps or clipping!
+  // The forest floor is flat so structures, bullets and grenades all agree
+  // on where the ground is.
   return 0;
 }
 
-export function buildWorld(mapId) {
-  const def = MAPS[mapId] || MAPS.forest;
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(def.sky); // fallback behind the sky dome
-  scene.add(makeSkyDome(def.sky, def.fogColor));
-  scene.fog = new THREE.FogExp2(def.fogColor, def.fogDensity);
-
-  // Hemisphere light (sky color from above, ground-bounce color from
-  // below) reads far more like real outdoor/indoor ambient light than a
-  // single flat ambient term.
-  scene.add(new THREE.HemisphereLight(def.sky, def.groundColor, 0.8));
-
-  // Flat, colorless safety-net fill light: guarantees every map has some
-  // minimum visibility, no matter how dark its themed palette is or how
-  // aggressively tone mapping compresses it. Prevents a repeat of a map
-  // rendering as a literal solid-black screen.
-  scene.add(new THREE.AmbientLight(0xffffff, 0.25));
-
-  const sun = new THREE.DirectionalLight(def.sun, 0.9);
-  sun.position.set(60, 90, 30);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  sun.shadow.camera.left = -80;
-  sun.shadow.camera.right = 80;
-  sun.shadow.camera.top = 80;
-  sun.shadow.camera.bottom = -80;
-  sun.shadow.camera.far = 300;
-  scene.add(sun);
-
-  // The zombies map reuses the Ironvale layout, so its darker, grimier
-  // `groundColor` tint (applied below) is what differentiates it visually
-  // from daytime Ironvale — no separate base texture needed.
-  const groundSpeckle =
-    def.terrain === 'techbase'
-      ? makeSpeckleTexture({ base: '#54585e', speck: '#2e3136', repeat: 48 })
-      : makeSpeckleTexture({ base: '#4a7c3f', speck: '#5a9a4a', repeat: 48 });
-
-  // Visually much bigger than the playable area (which stays bounded by
-  // WORLD_SIZE and the boundary walls below): the sky dome is a sphere of
-  // radius 400, and a ground plane that stops at WORLD_SIZE (240) leaves a
-  // gap between the ground's edge and the dome at the horizon — the dome's
-  // lower hemisphere becomes visible through that gap as a stray bulge
-  // poking up above the treeline. Extending the ground well past the
-  // dome's horizontal reach closes that gap.
-  const GROUND_VISUAL_SIZE = 1000;
-  let ground;
-  if (def.terrain === 'forest') {
-    // 120x120 tessellation density allows fine-grained smooth sculpted hills/humps across the forest floor
-    const geom = new THREE.PlaneGeometry(GROUND_VISUAL_SIZE, GROUND_VISUAL_SIZE, 120, 120);
-    const pos = geom.attributes.position;
-    // PlaneGeometry vertices are (x, y, 0). After rotation.x = -Math.PI / 2, the Plane's Y coordinate becomes the 3D Z axis, and the Plane's Z becomes the 3D Y (height!)
-    for (let i = 0; i < pos.count; i++) {
-      const vx = pos.getX(i);
-      const vy = pos.getY(i);
-      const worldX = vx;
-      const worldZ = -vy; // map rotated axis
-      const height = getForestTerrainHeight(worldX, worldZ);
-      pos.setZ(i, height); // set vertical height map
-    }
-    geom.computeVertexNormals();
-    ground = new THREE.Mesh(
-      geom,
-      new THREE.MeshStandardMaterial({ map: groundSpeckle, color: def.groundColor, roughness: 1 })
+// Physically-based atmospheric sky (Three.js Sky addon), with the sun
+// disc placed where the shadow-casting DirectionalLight actually is.
+function makeAtmosphericSky(sunDir, { turbidity, rayleigh, exposure }) {
+  const sky = new Sky();
+  sky.name = 'skydome';
+  sky.scale.setScalar(4500);
+  const u = sky.material.uniforms;
+  u.turbidity.value = turbidity;
+  u.rayleigh.value = rayleigh;
+  u.mieCoefficient.value = 0.004;
+  u.mieDirectionalG.value = 0.82;
+  u.sunPosition.value.copy(sunDir);
+  sky.material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      'gl_FragColor = vec4( retColor, 1.0 );',
+      `gl_FragColor = vec4( retColor * ${exposure.toFixed(3)}, 1.0 );`
     );
+  };
+  return sky;
+}
+
+function distToSegment(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz || 1)));
+  return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
+}
+
+// Dirt trails linking the spawns, cabins and points of interest.
+const FOREST_TRAILS = [
+  { width: 3.4, points: [[-90, -90], [-70, -66], [-48, -46], [-35, -35], [-16, -18], [0, -19]] },
+  { width: 3.4, points: [[90, 90], [68, 66], [48, 47], [35, 35], [17, 18], [0, 19]] },
+  { width: 3.2, points: [[90, -90], [75, -82], [65, -65], [52, -40], [42, -45], [25, -25], [19, -4]] },
+  { width: 3.2, points: [[-90, 90], [-78, 80], [-65, 65], [-50, 38], [-30, 20], [-19, 4]] },
+  { width: 2.6, points: [[-55, 25], [-45, 5], [-30, 20]] },
+  { width: 2.6, points: [[55, -25], [35, -5], [25, -25]] },
+  { width: 2.6, points: [[30, 55], [35, 35]] },
+  { width: 2.6, points: [[-30, -55], [-35, -35]] },
+  { width: 2.2, points: [[-8, 30], [12, 18], [35, -5]] },
+  { width: 2.2, points: [[-15, -12], [-45, 5]] },
+];
+
+export function buildWorld(mapId, options = {}) {
+  const quality = options.quality || { grass: 1, shadows: true };
+  const def = MAPS[mapId] || MAPS.forest;
+  beaconSpotlight = null;
+  beaconAngle = 0;
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(def.sky); // fallback behind the sky
+  const windUniform = { value: 0 };
+  buildOptions = { quality, windUniform };
+
+  const isForest = def.terrain === 'forest';
+  // Night survival (Dead Woods): moonlight, dense dark fog, firelight.
+  const isNight = !!def.night;
+  const isOutbreak = mapId === 'zombies';
+  // Late-afternoon sun for the outdoor maps: low enough for long, readable
+  // shadows and warm light; the Outbreak map keeps its blood-red dome.
+  const sunDir = isNight
+    ? new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - 32), THREE.MathUtils.degToRad(-35))
+    : isForest
+    ? new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - 38), THREE.MathUtils.degToRad(140))
+    : new THREE.Vector3(60, 90, 30).normalize();
+
+  let envScene = null;
+  let clouds = null;
+  let nightSky = null;
+  if (isNight) {
+    nightSky = makeNightSky(sunDir);
+    scene.add(nightSky);
+    envScene = new THREE.Scene();
+    envScene.add(makeSkyDome(0x1c2a48, 0x07090d));
+  } else if (mapId === 'zombies') {
+    scene.add(makeSkyDome(def.sky, def.fogColor));
   } else {
-    ground = new THREE.Mesh(
+    const sky = makeAtmosphericSky(sunDir, isForest ? { turbidity: 2.2, rayleigh: 3.0, exposure: 0.42 } : { turbidity: 9, rayleigh: 2.2, exposure: 0.45 });
+    scene.add(sky);
+    clouds = makeCloudLayer(sunDir, isForest ? { coverage: 0.4, opacity: 0.97 } : { coverage: 0.36, opacity: 0.97, tint: 0xe4e8ec });
+    scene.add(clouds.mesh);
+    envScene = new THREE.Scene();
+    envScene.add(makeAtmosphericSky(sunDir, isForest ? { turbidity: 2.2, rayleigh: 3.0, exposure: 0.42 } : { turbidity: 9, rayleigh: 2.2, exposure: 0.45 }));
+  }
+  // Slightly thicker forest haze on Low/Medium, where distant trees are culled.
+  const forestFog = (quality.grass ?? 1) < 1 ? 0.0115 : 0.0085;
+  scene.fog = isNight
+    ? new THREE.FogExp2(def.fogColor, def.fogDensity)
+    : isForest
+      ? new THREE.FogExp2(0xa9bcc4, forestFog)
+      : new THREE.FogExp2(def.fogColor, def.fogDensity);
+  if (isNight) scene.background = new THREE.Color(def.fogColor);
+
+  // Hemisphere light (sky color from above, ground-bounce color from below).
+  const hemi = isNight
+    ? new THREE.HemisphereLight(0x3a4c78, 0x0b0d08, 0.6)
+    : new THREE.HemisphereLight(isForest ? 0xbcd4e6 : def.sky, isForest ? 0x3b4a2a : def.groundColor, isForest ? 0.55 : 0.8);
+  scene.add(hemi);
+  // Safety-net fill so no map is ever pitch black.
+  scene.add(new THREE.AmbientLight(isNight ? 0x8090b0 : 0xffffff, isNight ? 0.05 : isForest ? 0.08 : 0.25));
+
+  const sun = isNight
+    ? new THREE.DirectionalLight(def.sun, 0.8) // moonlight
+    : new THREE.DirectionalLight(isForest ? 0xffe2c0 : def.sun, isForest ? 2.6 : isOutbreak ? 0.9 : 2.1);
+  sun.position.copy(sunDir).multiplyScalar(120);
+  sun.castShadow = !!quality.shadows;
+  sun.shadow.mapSize.set(quality.shadowMapSize || 2048, quality.shadowMapSize || 2048);
+  const range = quality.shadowRange || 50;
+  sun.shadow.camera.left = -range;
+  sun.shadow.camera.right = range;
+  sun.shadow.camera.top = range;
+  sun.shadow.camera.bottom = -range;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 320;
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.04;
+  scene.add(sun);
+  scene.add(sun.target);
+
+  const GROUND_VISUAL_SIZE = 1000;
+  const collidables = [];
+  const walkableSurfaces = [];
+  const structures = [];
+  let ambientActors = null;
+  let vegCull = [];
+  const half = WORLD_SIZE / 2;
+  const rand = makeRng(def.terrain === 'techbase' ? 4242 : 1337);
+
+  // Real buildings, placed at fixed spots per map.
+  const houseSpecs = isForest
+    ? [
+        { x: -55, z: 25, width: 6, depth: 5, doorSide: 'south', wallColor: 0x8a7458, roofColor: 0x5a3a2a },
+        { x: 55, z: -25, width: 6, depth: 5, doorSide: 'north', wallColor: 0x7a6248, roofColor: 0x4a2e22 },
+        { x: 30, z: 55, width: 6, depth: 5, doorSide: 'west', wallColor: 0x8a7458, roofColor: 0x5a3a2a },
+        { x: -30, z: -55, width: 6, depth: 5, doorSide: 'east', wallColor: 0x7a6248, roofColor: 0x4a2e22 },
+      ]
+    : [];
+
+  if (def.terrain === 'techbase') {
+    const groundSpeckle = makeSpeckleTexture({ base: '#54585e', speck: '#2e3136', repeat: 48 });
+    const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(GROUND_VISUAL_SIZE, GROUND_VISUAL_SIZE),
       new THREE.MeshStandardMaterial({ map: groundSpeckle, color: def.groundColor, roughness: 1 })
     );
-  }
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    ground.name = 'ground';
+    scene.add(ground);
 
-  // Real buildings, placed at fixed spots per map (not randomly scattered
-  // like trees/rocks/crates) — the thing this map was actually missing.
-  const houseSpecs =
-    def.terrain === 'techbase'
-      ? []
-      : [
-          { x: -55, z: 25, width: 6, depth: 5, doorSide: 'south', wallColor: 0x8a7458, roofColor: 0x5a3a2a },
-          { x: 55, z: -25, width: 6, depth: 5, doorSide: 'north', wallColor: 0x7a6248, roofColor: 0x4a2e22 },
-          { x: 30, z: 55, width: 6, depth: 5, doorSide: 'west', wallColor: 0x8a7458, roofColor: 0x5a3a2a },
-          { x: -30, z: -55, width: 6, depth: 5, doorSide: 'east', wallColor: 0x7a6248, roofColor: 0x4a2e22 },
-        ];
+    addIndustrialDistrict(scene, collidables, walkableSurfaces, isOutbreak, structures);
+    if (!isOutbreak) ambientActors = createVillageNPCs(scene);
 
-  const collidables = [];
-  const walkableSurfaces = [];
-  let ambientActors = null;
-  const half = WORLD_SIZE / 2;
-  const keepClear = [...getKeepClearPoints(), ...houseSpecs.map((h) => ({ x: h.x, z: h.z }))];
-  const rand = makeRng(def.terrain === 'techbase' ? 4242 : 1337);
-
-  if (def.terrain === 'techbase') {
-    addIndustrialDistrict(scene, collidables, walkableSurfaces, def.mode === 'zombies');
-    if (def.mode !== 'zombies') ambientActors = createVillageNPCs(scene);
-
-    // Industrial maps use localized village lawns rather than covering roads
-    // and factory yards in grass. Outbreak adds emergency lights to the same
-    // layout for atmosphere.
-    if (def.mode === 'zombies') {
-      // Spread lights out to the spawn corners too (±90), not just the
-      // middle of the map, so nobody spawns in total darkness.
+    if (isOutbreak) {
       const lightSpots = [
         [-40, -40], [40, -40], [-40, 40], [40, 40], [0, 0],
         [-90, -90], [90, -90], [-90, 90], [90, 90],
@@ -2529,114 +2543,217 @@ export function buildWorld(mapId) {
       }
     }
   } else {
-    // Overgrown/moss-covered Central Factory in the forest!
-    scene.add(makeCentralFactory(0, 0, collidables, walkableSurfaces, false, true));
-
-    // Additional Forest Factory 1: Rusted Recovery (Double-Story, lit!)
-    scene.add(makeCentralFactory(-65, 65, collidables, walkableSurfaces, false, true, "RUSTED RECOVERY"));
-
-    // Additional Forest Factory 2: Abandoned Station (Double-Story, lit!)
-    scene.add(makeCentralFactory(65, -65, collidables, walkableSurfaces, false, true, "ABANDONED STATION"));
-
-    const trunkMat = new THREE.MeshStandardMaterial({ map: makeBarkTexture(), roughness: 0.95 });
-    const canopyMats = [0x2e5c2e, 0x356b35, 0x3d7a3d].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 }));
-    // Smooth shading (not flatShading) reads as weathered stone rather
-    // than a faceted low-poly "gem" look.
-    const rockMat = new THREE.MeshStandardMaterial({ color: 0x777066, roughness: 1 });
-    const treeMaterials = { trunk: trunkMat, canopy: canopyMats };
-
-    const treeCount = 340;
-    for (let i = 0; i < treeCount; i++) {
-      const x = (rand() - 0.5) * (WORLD_SIZE - 10);
-      const z = (rand() - 0.5) * (WORLD_SIZE - 10);
-      if (Math.hypot(x, z) < 24) continue; // Keep clear of central factory
-      if (Math.hypot(x - (-65), z - 65) < 24) continue; // Keep clear of Rusted Recovery
-      if (Math.hypot(x - 65, z - (-65)) < 24) continue; // Keep clear of Abandoned Station
-      if (isNearAnyPoint(x, z, keepClear, 7)) continue;
-      const t = makeTree(x, z, rand, treeMaterials);
-      t.group.position.y = getForestTerrainHeight(x, z);
-      scene.add(t.group);
-      collidables.push({ x, z, radius: t.radius });
+    structures.push({ x: 0, z: 0, w: 38, d: 38, name: 'CENTRAL FACTORY', type: 'factory' });
+    structures.push({ x: -65, z: 65, w: 38, d: 38, name: 'RUSTED RECOVERY', type: 'factory' });
+    structures.push({ x: 65, z: -65, w: 38, d: 38, name: 'ABANDONED STATION', type: 'factory' });
+    structures.push({ x: -35, z: -35, w: 6, d: 6, name: 'WATCHTOWER A', type: 'watchtower' });
+    structures.push({ x: 27, z: 27, w: 6, d: 6, name: 'WATCHTOWER B', type: 'watchtower' });
+    structures.push({ x: -30, z: 20, w: 5, d: 5, name: 'CAMPSITE ALPHA', type: 'campsite' });
+    structures.push({ x: 25, z: -25, w: 5, d: 5, name: 'CAMPSITE BETA', type: 'campsite' });
+    structures.push({ x: -27, z: -12, w: 4, d: 1.5, name: 'BARRICADE', type: 'barricade' });
+    structures.push({ x: 12, z: 27, w: 4, d: 1.5, name: 'BARRICADE', type: 'barricade' });
+    structures.push({ x: -8, z: 30, w: 4, d: 1.5, name: 'BARRICADE', type: 'barricade' });
+    structures.push({ x: 35, z: -5, w: 4, d: 1.5, name: 'BARRICADE', type: 'barricade' });
+    structures.push({ x: -45, z: 5, w: 8, d: 4, name: 'STONE RUINS', type: 'ruin' });
+    structures.push({ x: 42, z: -45, w: 8, d: 4, name: 'STONE RUINS', type: 'ruin' });
+    structures.push({ x: 40, z: 40, w: 13, d: 13, name: 'LOOKOUT TOWER', type: 'monument' });
+    for (const spec of houseSpecs) {
+      structures.push({ x: spec.x, z: spec.z, w: spec.width, d: spec.depth, name: 'CABIN', type: 'house' });
     }
 
-    const rockCount = 30;
-    for (let i = 0; i < rockCount; i++) {
-      const x = (rand() - 0.5) * (WORLD_SIZE - 20);
-      const z = (rand() - 0.5) * (WORLD_SIZE - 20);
-      if (Math.hypot(x, z) < 24) continue; // Keep clear of central factory
-      if (Math.hypot(x - (-65), z - 65) < 24) continue; // Keep clear of Rusted Recovery
-      if (Math.hypot(x - 65, z - (-65)) < 24) continue; // Keep clear of Abandoned Station
-      if (isNearAnyPoint(x, z, keepClear, 7)) continue;
-      const r = makeRockCluster(x, z, rand, rockMat);
-      r.group.position.y = getForestTerrainHeight(x, z);
-      scene.add(r.group);
-      collidables.push({ x, z, radius: r.radius });
-    }
+    const clearings = structures.map((s) => ({
+      x: s.x,
+      z: s.z,
+      r: Math.max(s.w, s.d) * (s.type === 'factory' ? 0.85 : 1.1) + 3,
+      strength: s.type === 'campsite' ? 1 : 0.75,
+    }));
+    for (const sp of SPAWN_POINTS) clearings.push({ x: sp.x, z: sp.z, r: 9, strength: 0.6 });
 
-    scene.add(makeGrassField(half, makeRng(99), 6000, true));
+    const isBlockedExact = (x, z, r, forGrass = false) => {
+      for (const s of structures) {
+        const margin = forGrass ? (s.type === 'factory' ? 3.5 : 1.2) : s.type === 'factory' ? 6 : 3;
+        if (Math.abs(x - s.x) < s.w / 2 + r + margin && Math.abs(z - s.z) < s.d / 2 + r + margin) return true;
+      }
+      if (!forGrass && isNearAnyPoint(x, z, SPAWN_POINTS, 8 + r)) return true;
+      for (const trail of FOREST_TRAILS) {
+        const pts = trail.points;
+        for (let i = 0; i < pts.length - 1; i++) {
+          const d = distToSegment(x, z, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]);
+          if (d < trail.width / 2 + (forGrass ? 0.2 : r)) return true;
+        }
+      }
+      return false;
+    };
 
-    // Spawn 2 climbable, fully-illuminated Tactical Watchtowers!
-    scene.add(makeWatchtower(-35, -35, collidables, walkableSurfaces));
-    scene.add(makeWatchtower(35, 35, collidables, walkableSurfaces));
+    // Vegetation placement asks this hundreds of thousands of times, so the
+    // answer is cached on a half-metre grid per (radius, grass?) pair.
+    const blockedGrids = new Map();
+    const GRID_RES = 0.5;
+    const gridN = Math.ceil((half * 2 + 8) / GRID_RES);
+    const isBlocked = (x, z, r, forGrass = false) => {
+      const gx = Math.floor((x + half + 4) / GRID_RES);
+      const gz = Math.floor((z + half + 4) / GRID_RES);
+      if (gx < 0 || gz < 0 || gx >= gridN || gz >= gridN) return isBlockedExact(x, z, r, forGrass);
+      const key = `${Math.round(r * 4)}|${forGrass ? 1 : 0}`;
+      let grid = blockedGrids.get(key);
+      if (!grid) blockedGrids.set(key, (grid = new Uint8Array(gridN * gridN)));
+      const i = gz * gridN + gx;
+      if (grid[i] === 0) {
+        const cx = (gx + 0.5) * GRID_RES - half - 4;
+        const cz = (gz + 0.5) * GRID_RES - half - 4;
+        grid[i] = isBlockedExact(cx, cz, r, forGrass) ? 2 : 1;
+      }
+      return grid[i] === 2;
+    };
 
-    // Spawn 2 gorgeous campfire campsites with logs for tactical cover!
-    scene.add(makeCampsite(-30, 20, collidables));
-    scene.add(makeCampsite(25, -25, collidables));
+    scene.add(makeForestGround({ quality, trails: FOREST_TRAILS, clearings, extent: 260, visualSize: GROUND_VISUAL_SIZE }));
 
-    // Spawn several sandbag cover barricades strategically scattered!
-    scene.add(makeBarricade(-15, -12, 0.4, collidables));
-    scene.add(makeBarricade(12, 18, -0.6, collidables));
-    scene.add(makeBarricade(-8, 30, 1.2, collidables));
-    scene.add(makeBarricade(35, -5, -1.1, collidables));
+    // Forest buildings: clean, modern rebuilds (forestStation.js,
+    // forestCabins.js, forestLandmarks.js).
+    scene.add(makeForestStation(0, 0, collidables, walkableSurfaces, 'CENTRAL FACTORY'));
+    scene.add(makeForestStation(-65, 65, collidables, walkableSurfaces, 'RUSTED RECOVERY'));
+    scene.add(makeForestStation(65, -65, collidables, walkableSurfaces, 'ABANDONED STATION'));
+    scene.add(makeLookoutTower(40, 40, collidables, walkableSurfaces));
 
-    // Spawn 2 ancient overgrown stone ruins for premium aesthetics and cover!
-    scene.add(makeBrickRuin(-45, 5, 0.8, collidables));
-    scene.add(makeBrickRuin(42, -45, -0.5, collidables));
+    const vegetation = new THREE.Group();
+    vegetation.add(makeForest({ half, rand, collidables, isBlocked, quality, windUniform }));
+    vegetation.add(makeGrassMeadows({ half, rand: makeRng(99), isBlocked, quality, windUniform }));
+    // Chunk everything so off-screen vegetation is culled (also in the shadow
+    // pass), and stop drawing small detail past where fog hides it.
+    const lowSpec = (quality.grass ?? 1) < 0.9;
+    const tiny = ['pebbles', 'twigs', 'cones', 'mushrooms'];
+    vegCull = chunkVegetation(vegetation, (mesh) => {
+      const n = mesh.name || '';
+      if (n === 'grass') return { cull: lowSpec ? 45 : 65, shadow: false };
+      if (tiny.includes(n)) return { cull: 28, shadow: false, keepEvery: lowSpec ? 3 : 1 };
+      if (n === 'litter' || n === 'flowers') return { cull: 40, shadow: false, keepEvery: lowSpec ? 2 : 1 };
+      if (n === 'ferns') return { cull: 45, shadow: false };
+      if (n.startsWith('shrub') || n === 'fern') return { cull: lowSpec ? 55 : 75, shadow: !lowSpec };
+      // Trees: full detail near the player, the light copy beyond that
+      // (and on Low/Medium nothing past the thicker fog).
+      const treeCull = lowSpec ? 85 : (quality.grass ?? 1) < 1 ? 115 : (quality.grass ?? 1) > 1.2 ? 0 : 160;
+      const near = lowSpec ? 30 : (quality.grass ?? 1) < 1 ? 40 : (quality.grass ?? 1) > 1.2 ? 70 : 52;
+      if (/^(pine|broadleaf)-(trunk|leaves)-/.test(n)) return { lodMax: near, chunk: 48 };
+      if (/^(pine|broadleaf)-lod-/.test(n)) return { lodMin: near, cull: treeCull, chunk: 48, shadow: false };
+      // Treeline, boulders, logs: frustum culling (+ fog distance on Low/Medium).
+      return { cull: treeCull };
+    });
+    scene.add(vegetation);
+
+    scene.add(makeForestWatchtower(-35, -35, collidables, walkableSurfaces));
+    scene.add(makeForestWatchtower(27, 27, collidables, walkableSurfaces));
+    scene.add(makeForestCampsite(-30, 20, collidables));
+    scene.add(makeForestCampsite(25, -25, collidables));
+    scene.add(makeSandbagBarricade(-27, -12, 0.4, collidables));
+    scene.add(makeSandbagBarricade(12, 27, -0.6, collidables));
+    scene.add(makeSandbagBarricade(-8, 30, 1.2, collidables));
+    scene.add(makeSandbagBarricade(35, -5, -1.1, collidables));
+    scene.add(makeStoneRuin(-45, 5, 0.8, collidables));
+    scene.add(makeStoneRuin(42, -45, -0.5, collidables));
   }
+
+  // Firelight: the only warm light in the night woods (campfires, and red
+  // emergency flares dropped outside each station).
+  const nightLights = [];
+  if (isNight) {
+    const addFlicker = (x, y, z, color, intensity, dist) => {
+      const l = new THREE.PointLight(color, intensity, dist, 1.6);
+      l.position.set(x, y, z);
+      scene.add(l);
+      nightLights.push({ light: l, base: intensity, phase: Math.random() * 10 });
+    };
+    addFlicker(-30, 0.9, 20, 0xff8a3c, 9, 18);
+    addFlicker(25, 0.9, -25, 0xff8a3c, 9, 18);
+    if ((quality.lights ?? 3) >= 3) {
+      addFlicker(4, 0.25, 14, 0xff2a1a, 3.5, 11);
+      addFlicker(-61, 0.25, 50, 0xff2a1a, 3.5, 11);
+      addFlicker(61, 0.25, -50, 0xff2a1a, 3.5, 11);
+    }
+  }
+  let lightningFlash = 0;
+  const hemiBase = hemi.intensity;
 
   for (const spec of houseSpecs) {
-    const house = makeHouse(spec.x, spec.z, collidables, spec);
-    const yVal = def.terrain === 'forest' ? getForestTerrainHeight(spec.x, spec.z) : 0;
-    house.position.y = yVal;
-    scene.add(house);
+    if (isForest) {
+      scene.add(makeForestCabin(spec.x, spec.z, collidables, spec));
+      // The cabin floor sits ~0.22 m up on its plinth; make it walkable.
+      const sideways = spec.doorSide === 'west' || spec.doorSide === 'east';
+      walkableSurfaces.push({
+        type: 'rect',
+        x: spec.x,
+        z: spec.z,
+        width: (sideways ? spec.depth : spec.width) - 0.5,
+        depth: (sideways ? spec.width : spec.depth) - 0.5,
+        y: 0.22,
+      });
+    } else {
+      scene.add(makeHouse(spec.x, spec.z, collidables, spec));
+    }
   }
 
-  // Boundary walls so players can't wander off the (much bigger) world.
-  const wallHeight = 5;
-  const wallMat = new THREE.MeshStandardMaterial({
-    color: def.terrain === 'techbase' ? 0x333840 : 0x6b5a3a,
-    roughness: 0.9,
-  });
-  const wallDefs = [
-    [0, -half, WORLD_SIZE, 1],
-    [0, half, WORLD_SIZE, 1],
-    [-half, 0, 1, WORLD_SIZE],
-    [half, 0, 1, WORLD_SIZE],
-  ];
-  for (const [x, z, w, d] of wallDefs) {
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(w, wallHeight, d), wallMat);
-    wall.position.set(x, wallHeight / 2, z);
-    wall.castShadow = true;
-    wall.receiveShadow = true;
-    scene.add(wall);
+  // Boundary walls on the industrial maps. The forest is instead ringed
+  // by a dense treeline (see forest.js); the boundary itself is enforced
+  // by `bounds` below.
+  if (!isForest) {
+    const wallHeight = 5;
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x333840, roughness: 0.9 });
+    const wallDefs = [
+      [0, -half, WORLD_SIZE, 1],
+      [0, half, WORLD_SIZE, 1],
+      [-half, 0, 1, WORLD_SIZE],
+      [half, 0, 1, WORLD_SIZE],
+    ];
+    for (const [x, z, w, d] of wallDefs) {
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(w, wallHeight, d), wallMat);
+      wall.position.set(x, wallHeight / 2, z);
+      wall.castShadow = true;
+      wall.receiveShadow = true;
+      scene.add(wall);
+    }
   }
+
+  // Grime, rain streaks, ground splash (and moss in the forest) on every
+  // building surface, so nothing reads as a flat-coloured box.
+  applyWeathering(scene, { moss: isForest });
 
   return {
     scene,
+    sun,
+    envScene,
     collidables,
+    structures,
     bounds: half - 1.5,
-    getFloorHeight(x, z, currentY, stepAllowance = 0) {
-      const surfaceHeight = getWalkableHeight(walkableSurfaces, x, z, currentY, stepAllowance);
-      if (def.terrain === 'forest') {
-        const terrainHeight = getForestTerrainHeight(x, z);
-        return Math.max(terrainHeight, surfaceHeight);
-      }
-      return surfaceHeight;
+    night: isNight,
+    // Lightning: briefly floods the woods with cold light (0..1).
+    lightning(strength = 1) {
+      lightningFlash = Math.max(lightningFlash, strength);
     },
-    update(dt) {
+    getFloorHeight(x, z, currentY, stepAllowance = 0) {
+      return getWalkableHeight(walkableSurfaces, x, z, currentY, stepAllowance);
+    },
+    update(dt, cameraPos) {
+      windUniform.value += dt;
+      if (cameraPos && vegCull.length) updateCulling(vegCull, cameraPos);
+      clouds?.update(dt);
+      if (isNight) {
+        const t = performance.now() / 1000;
+        for (const n of nightLights) {
+          n.light.intensity = n.base * (0.78 + 0.14 * Math.sin(t * 9 + n.phase) + 0.1 * Math.sin(t * 23.7 + n.phase * 3) + (Math.random() - 0.5) * 0.08);
+        }
+        // Double-strobe then fade, like real lightning.
+        if (lightningFlash > 0.001) {
+          lightningFlash *= Math.exp(-dt * 7);
+          const strobe = lightningFlash * (0.65 + 0.35 * Math.abs(Math.sin(t * 55)));
+          hemi.intensity = hemiBase + strobe * 5;
+          nightSky.userData.dome.material.color.setScalar(1 + strobe * 7);
+        } else if (hemi.intensity !== hemiBase) {
+          hemi.intensity = hemiBase;
+          nightSky.userData.dome.material.color.setScalar(1);
+        }
+      }
       ambientActors?.update(dt);
       if (beaconSpotlight) {
-        beaconAngle += dt * 0.45; // rotate smoothly
+        beaconAngle += dt * 0.45;
         beaconSpotlight.target.position.set(
           beaconSpotlight.position.x + Math.cos(beaconAngle) * 85,
           0,
