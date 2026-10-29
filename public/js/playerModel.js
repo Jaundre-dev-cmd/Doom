@@ -595,11 +595,24 @@ export function createPlayerModel(skinDef, name, options = {}) {
       neck.rotation.x = pitch * 0.25 + lean * 0.5;
     },
     dispose() {
+<<<<<<< HEAD
       group.traverse((o) => {
         if (o.isMesh && o.geometry && !o.userData.sharedWeapon) o.geometry.dispose();
       });
       nameSprite.userData.texture.dispose();
       nameSprite.material.dispose();
+=======
+      group.traverse((object) => {
+        if (object.geometry) object.geometry.dispose();
+        if (object.material) {
+          const materials = Array.isArray(object.material) ? object.material : [object.material];
+          for (const material of materials) {
+            material.map?.dispose();
+            material.dispose();
+          }
+        }
+      });
+>>>>>>> 3838b3c14c840553ef3b32b1d6ab5b1aa3ec9bef
     },
   };
 }
