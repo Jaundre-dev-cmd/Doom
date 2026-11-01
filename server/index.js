@@ -94,7 +94,7 @@ const httpServer = http.createServer((req, res) => {
 
   let urlPath = req.url.split('?')[0];
   if (urlPath === '/') {
-    urlPath = '/home.html';
+    urlPath = '/index.html';
   }
   const filePath = path.normalize(path.join(PUBLIC_DIR, urlPath));
 

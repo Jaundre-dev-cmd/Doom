@@ -345,7 +345,6 @@ function buildLobbyCards() {
   for (const key of WEAPON_ORDER) {
     const card = document.createElement('button');
     card.type = 'button';
-<<<<<<< HEAD
     card.className = 'card' + (key === selectedWeapon ? ' selected' : '');
     const img = weaponImage(key);
     if (img) {
@@ -355,17 +354,6 @@ function buildLobbyCards() {
     } else {
       card.textContent = WEAPONS[key].name;
     }
-=======
-    card.className = 'card weapon-card' + (key === selectedWeapon ? ' selected' : '');
-    const icon = document.createElement('span');
-    icon.className = 'weapon-card-icon';
-    icon.setAttribute('aria-hidden', 'true');
-    icon.textContent = weaponIcons[key] || '▰';
-    const label = document.createElement('span');
-    label.className = 'weapon-card-label';
-    label.textContent = WEAPONS[key].name;
-    card.append(icon, label);
->>>>>>> 3838b3c14c840553ef3b32b1d6ab5b1aa3ec9bef
     card.addEventListener('click', () => {
       selectedWeapon = key;
       buildLobbyCards();
@@ -1971,7 +1959,7 @@ function addKillfeed(msg) {
   if (!killfeedEl) return;
   const nameOf = (id) => {
     if (id === myId) return localPlayer.name;
-    if (typeof id === 'string' && id.startsWith('zombie_')) return 'Mutant';
+    if (typeof id === 'string' && id.startsWith('zombie_')) return 'Zombie';
     return remotePlayers[id]?.data.name || 'World';
   };
   const teamClass = (id) => (id === myId || (remotePlayers[id] && isAlly(remotePlayers[id].data)) ? 'kf-team-ally' : 'kf-team-enemy');
@@ -2271,7 +2259,7 @@ function startDeath(msg) {
   if (myWeaponView) myWeaponView.visible = false;
   crosshair.classList.add('hidden');
   sniperScopeEl.classList.add('hidden');
-  const killerName = killerId === myId ? 'yourself' : killerIsPlayer ? remotePlayers[killerId].data.name : typeof killerId === 'string' ? 'a Mutant' : 'the environment';
+  const killerName = killerId === myId ? 'yourself' : killerIsPlayer ? remotePlayers[killerId].data.name : typeof killerId === 'string' ? 'a zombie' : 'the environment';
   notifyKill(`KILLED BY ${String(killerName).toUpperCase()}`, msg.headshot);
   if (document.pointerLockElement) document.exitPointerLock();
 
@@ -4034,7 +4022,6 @@ try {
 if (!serverInput.value) serverInput.value = `ws://${location.hostname || 'localhost'}:${location.port || 3000}`;
 
 buildLobbyCards();
-<<<<<<< HEAD
 // Build the detailed gun models in the background while you're in the menu,
 // and photograph each one for the armory / HUD icons.
 prewarmWeapons();
@@ -4081,9 +4068,8 @@ setInterval(async () => {
     // server unreachable — the connect error explains it
   }
 }, 3000);
-=======
+
 updateLobbyCharacterPreview();
->>>>>>> 3838b3c14c840553ef3b32b1d6ab5b1aa3ec9bef
 
 (async function showConnectionInfo() {
   try {

@@ -2881,8 +2881,6 @@ body:has(#killcam-overlay:not(.hidden)) #hitmarker {
   position: fixed;
   inset: 0;
   z-index: 14;
-<<<<<<< HEAD
-=======
 }
 
 /* ---------- Compact tactical homepage ---------- */
@@ -3471,7 +3469,6 @@ body:has(#lobby:not(.hidden)) {
 #help-overlay {
   position: fixed;
   inset: 0;
->>>>>>> 3838b3c14c840553ef3b32b1d6ab5b1aa3ec9bef
   display: flex;
   align-items: center;
   justify-content: center;
