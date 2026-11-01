@@ -883,7 +883,7 @@ function buildRig(o) {
   const root = new THREE.Group();
   const body = SkeletonUtils.clone(base.scene);
   body.scale.setScalar(base.scale);
-  body.rotation.y = Math.PI; // the rig faces +Z; the game's forward is -Z
+  // soldier.glb already faces -Z (the game's forward): its toes sit at -Z of the feet.
   root.add(body);
 
   const bones = {};
